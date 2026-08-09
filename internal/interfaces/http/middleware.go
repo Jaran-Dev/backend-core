@@ -29,18 +29,34 @@ func AuthMiddleware(tokenSvc auth.TokenService) gin.HandlerFunc {
 	}
 }
 
-func RoleMiddleware(requiredRole auth.Role) gin.HandlerFunc {
+func RoleMiddleware(requiredRoles ...auth.Role) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		roleVal, exists := c.Get("role")
 		if !exists {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden: no role attached to context"})
 			return
 		}
-		role := roleVal.(auth.Role)
-		if role != requiredRole {
+
+		userRole := roleVal.(auth.Role)
+
+		if userRole == auth.RoleAdmin {
+			c.Next()
+			return
+		}
+
+		isAllowed := false
+		for _, r := range requiredRoles {
+			if userRole == r {
+				isAllowed = true
+				break
+			}
+		}
+
+		if !isAllowed {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
 			return
 		}
+
 		c.Next()
 	}
 }
