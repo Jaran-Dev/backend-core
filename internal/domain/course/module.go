@@ -1,6 +1,11 @@
 package course
 
-import "github.com/google/uuid"
+import (
+	"context"
+	"errors"
+
+	"github.com/google/uuid"
+)
 
 type Module struct {
 	id       ModuleID
@@ -42,4 +47,25 @@ func (m *Module) UpdateTitle(title string) {
 
 func (m *Module) UpdatePosition(newPos int) {
 	m.position = newPos
+}
+
+func UnmarshalModule(id uuid.UUID, courseID CourseID, position int, title string) (*Module, error) {
+	if position < 0 {
+		return nil, errors.New("cannot unmarshal module: position cannot be negative")
+	}
+
+	return &Module{
+		id:       ModuleID(id),
+		courseID: courseID,
+		position: position,
+		title:    title,
+	}, nil
+}
+
+type ModuleRepository interface {
+	Create(ctx context.Context, m *Module) error
+	GetByID(ctx context.Context, id ModuleID) (*Module, error)
+	ListByCourseID(ctx context.Context, courseID CourseID) ([]*Module, error)
+	Update(ctx context.Context, m *Module) error
+	Delete(ctx context.Context, id ModuleID) error
 }
