@@ -30,3 +30,9 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Repomix (For LLMs)
+repomix/
+repomix.config.json
+.repomixignore
+repomix-output.*
