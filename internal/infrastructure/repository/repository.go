@@ -19,3 +19,10 @@ func NullableString(s string) interface{} {
 	}
 	return s
 }
+
+func DerefString(s *string) string {
+	if s != nil {
+		return *s
+	}
+	return ""
+}
