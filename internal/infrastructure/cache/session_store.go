@@ -1,0 +1,149 @@
+package cache
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/Jaran-Dev/backend-core/internal/domain/auth"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+)
+
+type RedisSessionStore struct {
+	client *redis.Client
+}
+
+func NewRedisSessionStore(client *redis.Client) *RedisSessionStore {
+	return &RedisSessionStore{client: client}
+}
+
+func HashToken(raw string) string {
+	h := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(h[:])
+}
+
+func GenerateOpaqueToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func (s *RedisSessionStore) SaveSession(ctx context.Context, hashedToken string, userID uuid.UUID, role auth.Role, familyID string, expiresAt time.Time) error {
+	key := fmt.Sprintf("session:%s", hashedToken)
+	ttl := time.Until(expiresAt)
+	if ttl <= 0 {
+		return auth.ErrTokenExpired
+	}
+
+	pipe := s.client.TxPipeline()
+	pipe.HSet(ctx, key, "user_id", userID.String(), "role", string(role), "family_id", familyID, "used", "0", "expires_at", expiresAt.Unix())
+	pipe.Expire(ctx, key, ttl)
+	pipe.SAdd(ctx, fmt.Sprintf("family:%s", familyID), hashedToken)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+func (s *RedisSessionStore) GetSession(ctx context.Context, hashedToken string) (uuid.UUID, auth.Role, string, bool, time.Time, error) {
+	key := fmt.Sprintf("session:%s", hashedToken)
+	res, err := s.client.HGetAll(ctx, key).Result()
+	if err == redis.Nil || len(res) == 0 {
+		return uuid.Nil, "", "", false, time.Time{}, auth.ErrTokenNotFound
+	}
+	if err != nil {
+		return uuid.Nil, "", "", false, time.Time{}, err
+	}
+
+	uid, _ := uuid.Parse(res["user_id"])
+	role := auth.Role(res["role"])
+	familyID := res["family_id"]
+	used := res["used"] == "1"
+	expUnix, _ := strconv.ParseInt(res["expires_at"], 10, 64)
+	exp := time.Unix(expUnix, 0)
+
+	return uid, role, familyID, used, exp, nil
+}
+
+// AtomicRotate uses a Lua script to prevent TOCTOU races during refresh token rotation.
+const rotateScript = `
+local old_key = 'session:' .. KEYS[1]
+local new_key = 'session:' .. ARGV[1]
+local now = tonumber(ARGV[2])
+local new_exp = tonumber(ARGV[3])
+
+if redis.call('EXISTS', old_key) == 0 then return {err='not_found'} end
+
+local user_id = redis.call('HGET', old_key, 'user_id')
+local role = redis.call('HGET', old_key, 'role')
+local family_id = redis.call('HGET', old_key, 'family_id')
+local used = redis.call('HGET', old_key, 'used')
+local exp = tonumber(redis.call('HGET', old_key, 'expires_at'))
+
+if used == '1' then
+  -- Reuse detected: nuke the whole family
+  local fam_key = 'family:' .. family_id
+  local members = redis.call('SMEMBERS', fam_key)
+  for _, m in ipairs(members) do redis.call('DEL', 'session:' .. m) end
+  redis.call('DEL', fam_key)
+  return {err='reuse'}
+end
+
+if exp < now then return {err='expired'} end
+
+-- Mark old as used
+redis.call('HSET', old_key, 'used', '1')
+
+-- Save new token
+redis.call('HSET', new_key, 'user_id', user_id, 'role', role, 'family_id', family_id, 'used', '0', 'expires_at', new_exp)
+redis.call('EXPIREAT', new_key, new_exp)
+redis.call('SADD', 'family:' .. family_id, ARGV[1])
+
+return {user_id, role, family_id}
+`
+
+func (s *RedisSessionStore) AtomicRotate(ctx context.Context, hashedOldToken, hashedNewToken string, newExpiresAt time.Time) (uuid.UUID, auth.Role, error) {
+	now := time.Now().Unix()
+	newExp := newExpiresAt.Unix()
+
+	res, err := s.client.Eval(ctx, rotateScript, []string{hashedOldToken}, hashedNewToken, now, newExp).Result()
+	if err != nil {
+		if err.Error() == "not_found" {
+			return uuid.Nil, "", auth.ErrTokenNotFound
+		}
+		if err.Error() == "reuse" {
+			return uuid.Nil, "", auth.ErrRefreshTokenReused
+		}
+		if err.Error() == "expired" {
+			return uuid.Nil, "", auth.ErrTokenExpired
+		}
+		return uuid.Nil, "", err
+	}
+
+	vals := res.([]interface{})
+	uid, _ := uuid.Parse(vals[0].(string))
+	role := auth.Role(vals[1].(string))
+	return uid, role, nil
+}
+
+func (s *RedisSessionStore) RevokeFamily(ctx context.Context, familyID string) error {
+	famKey := fmt.Sprintf("family:%s", familyID)
+	members, err := s.client.SMembers(ctx, famKey).Result()
+	if err != nil {
+		return err
+	}
+	if len(members) == 0 {
+		return nil
+	}
+	keys := make([]string, len(members))
+	for i, m := range members {
+		keys[i] = fmt.Sprintf("session:%s", m)
+	}
+	keys = append(keys, famKey)
+	return s.client.Del(ctx, keys...).Err()
+}
