@@ -1,6 +1,7 @@
 package user
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -57,4 +58,29 @@ func (u *User) UpdateProfile(displayName, uiLocale string) {
 	if uiLocale != "" {
 		u.uiLocale = uiLocale
 	}
+}
+
+func UnmarshalUser(id uuid.UUID, emailStr string, passwordHash string, displayName *string, uiLocale string, createdAt time.Time) (*User, error) {
+	if passwordHash == "" {
+		return nil, errors.New("cannot unmarshal user: password hash is empty")
+	}
+
+	email, err := NewEmail(emailStr)
+	if err != nil {
+		return nil, errors.New("cannot unmarshal user: invalid email in database")
+	}
+
+	name := ""
+	if displayName != nil {
+		name = *displayName
+	}
+
+	return &User{
+		id:           UserID(id),
+		email:        email,
+		passwordHash: passwordHash,
+		displayName:  name,
+		uiLocale:     uiLocale,
+		createdAt:    createdAt,
+	}, nil
 }
