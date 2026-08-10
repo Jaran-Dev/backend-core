@@ -1,6 +1,7 @@
 package lesson
 
 import (
+	"errors"
 	"time"
 
 	"github.com/Jaran-Dev/backend-core/internal/domain/course"
@@ -149,4 +150,90 @@ func (l *Lesson) AddSubtitle(locale course.Locale, url string) error {
 	})
 	l.updatedAt = time.Now()
 	return nil
+}
+
+func UnmarshalLesson(
+	id uuid.UUID,
+	moduleID uuid.UUID,
+	position int,
+	accessTypeStr string,
+	asset VideoAsset,
+	statusStr string,
+	createdAt time.Time,
+	updatedAt time.Time,
+	translations []LessonTranslation,
+	subtitles []Subtitle,
+) (*Lesson, error) {
+	if !course.LessonAccessType(accessTypeStr).IsValid() {
+		return nil, ErrInvalidAccessType
+	}
+
+	var status LessonVideoStatus
+	switch statusStr {
+	case "uploading":
+		status = VideoStatusUploading
+	case "ready":
+		status = VideoStatusReady
+	case "error":
+		status = VideoStatusError
+	default:
+		return nil, errors.New("invalid lesson status in database")
+	}
+
+	return &Lesson{
+		id:           course.LessonID(id),
+		moduleID:     course.ModuleID(moduleID),
+		position:     position,
+		accessType:   course.LessonAccessType(accessTypeStr),
+		asset:        asset,
+		status:       status,
+		createdAt:    createdAt,
+		updatedAt:    updatedAt,
+		translations: translations,
+		subtitles:    subtitles,
+	}, nil
+}
+
+func UnmarshalVideoAsset(assetID, playbackID string, durationSec int, statusStr string) (VideoAsset, error) {
+	var status LessonVideoStatus
+	switch statusStr {
+	case "uploading":
+		status = VideoStatusUploading
+	case "ready":
+		status = VideoStatusReady
+	case "error":
+		status = VideoStatusError
+	default:
+		return VideoAsset{}, errors.New("invalid video status in database")
+	}
+
+	return VideoAsset{
+		AssetID:     assetID,
+		PlaybackID:  playbackID,
+		DurationSec: durationSec,
+		Status:      status,
+	}, nil
+}
+
+func UnmarshalLessonTranslation(lessonID course.LessonID, locale course.Locale, title, description string) (LessonTranslation, error) {
+	if !locale.IsValid() {
+		return LessonTranslation{}, course.ErrInvalidLocale
+	}
+	return LessonTranslation{
+		lessonID:    lessonID,
+		locale:      locale,
+		title:       title,
+		description: description,
+	}, nil
+}
+
+func UnmarshalSubtitle(lessonID course.LessonID, locale course.Locale, url string) (Subtitle, error) {
+	if !locale.IsValid() {
+		return Subtitle{}, course.ErrInvalidLocale
+	}
+	return Subtitle{
+		lessonID: lessonID,
+		locale:   locale,
+		url:      url,
+	}, nil
 }

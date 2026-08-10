@@ -1,6 +1,7 @@
 package course
 
 import (
+	"errors"
 	"time"
 
 	"github.com/Jaran-Dev/backend-core/internal/domain/admin"
@@ -125,4 +126,46 @@ func (c *Course) Publish() error {
 func (c *Course) Archive() {
 	c.status = CourseStatusArchived
 	c.updatedAt = time.Now()
+}
+
+func UnmarshalCourse(id uuid.UUID, slugStr string, statusStr string, coverURL string, createdBy admin.AdminID, createdAt time.Time, updatedAt time.Time, translations []CourseTranslation) (*Course, error) {
+	slug, err := NewSlug(slugStr)
+	if err != nil {
+		return nil, err
+	}
+
+	var status CourseStatus
+	switch statusStr {
+	case "draft":
+		status = CourseStatusDraft
+	case "published":
+		status = CourseStatusPublished
+	case "archived":
+		status = CourseStatusArchived
+	default:
+		return nil, errors.New("invalid course status in database")
+	}
+
+	return &Course{
+		id:           CourseID(id),
+		slug:         slug,
+		status:       status,
+		coverURL:     coverURL,
+		createdBy:    createdBy,
+		createdAt:    createdAt,
+		updatedAt:    updatedAt,
+		translations: translations,
+	}, nil
+}
+
+func UnmarshalCourseTranslation(courseID CourseID, locale Locale, title, description string) (CourseTranslation, error) {
+	if !locale.IsValid() {
+		return CourseTranslation{}, ErrInvalidLocale
+	}
+	return CourseTranslation{
+		courseID:    courseID,
+		locale:      locale,
+		title:       title,
+		description: description,
+	}, nil
 }

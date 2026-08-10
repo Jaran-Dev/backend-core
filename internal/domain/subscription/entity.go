@@ -71,3 +71,30 @@ func (s *Subscription) IsActive() bool {
 	}
 	return s.endsAt.After(now)
 }
+
+func UnmarshalSubscription(id uuid.UUID, userID user.UserID, sourceStr string, startsAt time.Time, endsAt *time.Time, providerRef *string, createdAt time.Time) (*Subscription, error) {
+	source := Source(sourceStr)
+	if !source.IsValid() {
+		return nil, ErrInvalidSource
+	}
+
+	var endsAtTime time.Time
+	if endsAt != nil {
+		endsAtTime = *endsAt
+	}
+
+	var refStr string
+	if providerRef != nil {
+		refStr = *providerRef
+	}
+
+	return &Subscription{
+		id:          SubscriptionID(id),
+		userID:      userID,
+		source:      source,
+		startsAt:    startsAt,
+		endsAt:      endsAtTime,
+		providerRef: refStr,
+		createdAt:   createdAt,
+	}, nil
+}

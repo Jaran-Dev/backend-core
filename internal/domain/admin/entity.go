@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,4 +43,22 @@ func (a *Admin) UpdatePassword(newHash string) {
 	if newHash != "" {
 		a.passwordHash = newHash
 	}
+}
+
+func UnmarshalAdmin(id uuid.UUID, emailStr string, passwordHash string, createdAt time.Time) (*Admin, error) {
+	if passwordHash == "" {
+		return nil, errors.New("cannot unmarshal admin: password hash is empty")
+	}
+
+	email, err := NewEmail(emailStr)
+	if err != nil {
+		return nil, errors.New("cannot unmarshal admin: invalid email in database")
+	}
+
+	return &Admin{
+		id:           AdminID(id),
+		email:        email,
+		passwordHash: passwordHash,
+		createdAt:    createdAt,
+	}, nil
 }

@@ -1,6 +1,7 @@
 package progress
 
 import (
+	"errors"
 	"time"
 
 	"github.com/Jaran-Dev/backend-core/internal/domain/course"
@@ -99,4 +100,34 @@ func (lp *LessonProgress) UpdateProgress(watchedSec int, totalDurationSec int) {
 func (lp *LessonProgress) MarkComplete() {
 	lp.completed = true
 	lp.updatedAt = time.Now()
+}
+
+func UnmarshalEnrollment(id uuid.UUID, userID user.UserID, courseID course.CourseID, enrolledAt time.Time) (*Enrollment, error) {
+	if id == uuid.Nil {
+		return nil, errors.New("cannot unmarshal enrollment: id is nil")
+	}
+	return &Enrollment{
+		id:         id,
+		userID:     userID,
+		courseID:   courseID,
+		enrolledAt: enrolledAt,
+	}, nil
+}
+
+func UnmarshalLessonProgress(id uuid.UUID, userID user.UserID, lessonID course.LessonID, watchedSec int, completed bool, updatedAt time.Time) (*LessonProgress, error) {
+	if id == uuid.Nil {
+		return nil, errors.New("cannot unmarshal lesson progress: id is nil")
+	}
+	if watchedSec < 0 {
+		return nil, errors.New("cannot unmarshal lesson progress: watchedSec cannot be negative")
+	}
+
+	return &LessonProgress{
+		id:         id,
+		userID:     userID,
+		lessonID:   lessonID,
+		watchedSec: watchedSec,
+		completed:  completed,
+		updatedAt:  updatedAt,
+	}, nil
 }
