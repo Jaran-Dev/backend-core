@@ -1,64 +1,29 @@
 package admin
 
 import (
-	"errors"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 )
 
 type Admin struct {
-	id           AdminID
-	email        Email
-	passwordHash string
-	createdAt    time.Time
+	accountID account.AccountID
+	createdAt time.Time
 }
 
-func NewAdmin(email Email, passwordHash string) *Admin {
+func NewAdmin(accID account.AccountID) *Admin {
 	return &Admin{
-		id:           AdminID(uuid.New()),
-		email:        email,
-		passwordHash: passwordHash,
-		createdAt:    time.Now(),
+		accountID: accID,
+		createdAt: time.Now(),
 	}
 }
 
-func (a *Admin) ID() AdminID {
-	return a.id
-}
+func (a *Admin) AccountID() account.AccountID { return a.accountID }
+func (a *Admin) CreatedAt() time.Time         { return a.createdAt }
 
-func (a *Admin) Email() Email {
-	return a.email
-}
-
-func (a *Admin) PasswordHash() string {
-	return a.passwordHash
-}
-
-func (a *Admin) CreatedAt() time.Time {
-	return a.createdAt
-}
-
-func (a *Admin) UpdatePassword(newHash string) {
-	if newHash != "" {
-		a.passwordHash = newHash
-	}
-}
-
-func UnmarshalAdmin(id uuid.UUID, emailStr string, passwordHash string, createdAt time.Time) (*Admin, error) {
-	if passwordHash == "" {
-		return nil, errors.New("cannot unmarshal admin: password hash is empty")
-	}
-
-	email, err := NewEmail(emailStr)
-	if err != nil {
-		return nil, errors.New("cannot unmarshal admin: invalid email in database")
-	}
-
+func UnmarshalAdmin(accID account.AccountID, createdAt time.Time) *Admin {
 	return &Admin{
-		id:           AdminID(id),
-		email:        email,
-		passwordHash: passwordHash,
-		createdAt:    createdAt,
-	}, nil
+		accountID: accID,
+		createdAt: createdAt,
+	}
 }
