@@ -10,12 +10,12 @@ import (
 )
 
 type RedisAttemptStore struct {
-	client        *redis.Client
-	attemptWindow time.Duration
+	client *redis.Client
+	window time.Duration
 }
 
-func NewRedisAttemptStore(client *redis.Client, attemptWindow time.Duration) *RedisAttemptStore {
-	return &RedisAttemptStore{client: client, attemptWindow: attemptWindow}
+func NewRedisAttemptStore(client *redis.Client, window time.Duration) *RedisAttemptStore {
+	return &RedisAttemptStore{client: client, window: window}
 }
 
 func (s *RedisAttemptStore) IncrementFailedAttempt(ctx context.Context, email string) (int, error) {
@@ -24,8 +24,8 @@ func (s *RedisAttemptStore) IncrementFailedAttempt(ctx context.Context, email st
 	if err != nil {
 		return 0, err
 	}
-	if count == 1 && s.attemptWindow > 0 {
-		s.client.Expire(ctx, key, s.attemptWindow)
+	if count == 1 && s.window > 0 {
+		s.client.Expire(ctx, key, s.window)
 	}
 	return int(count), nil
 }
