@@ -4,28 +4,35 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-func NewPostgres(ctx context.Context, dsn string, maxConns, minConns int32) (*pgxpool.Pool, error) {
-	cfg, err := pgxpool.ParseConfig(dsn)
+func NewPostgres(ctx context.Context, dsn string) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Warn),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse db config: %w", err)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	cfg.MaxConns = maxConns
-	cfg.MinConns = minConns
-
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create db pool: %w", err)
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
+	// Pool settings
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+
+	if err := sqlDB.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("failed to ping db: %w", err)
 	}
 
-	slog.Info("Successfully connected to PostgreSQL", "max_conns", maxConns, "min_conns", minConns)
-	return pool, nil
+	slog.Info("Successfully connected to PostgreSQL via GORM")
+	return db, nil
 }
