@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 )
 
 type Role string
@@ -20,19 +20,18 @@ type Hasher interface {
 }
 
 type AccessTokenClaims struct {
-	UserID    uuid.UUID
+	AccountID account.AccountID
 	Role      Role
-	TokenType string // "access"
 }
 
 type TokenService interface {
-	GenerateAccessToken(userID uuid.UUID, role Role) (string, time.Time, error)
+	GenerateAccessToken(accountID account.AccountID, role Role) (string, time.Time, error)
 	ValidateAccessToken(tokenString string) (*AccessTokenClaims, error)
 }
 
 type SessionStore interface {
-	SaveSession(ctx context.Context, hashedToken string, userID uuid.UUID, role Role, familyID string, expiresAt time.Time) error
-	GetSession(ctx context.Context, hashedToken string) (userID uuid.UUID, role Role, familyID string, used bool, expiresAt time.Time, err error)
-	AtomicRotate(ctx context.Context, hashedOldToken, hashedNewToken string, newExpiresAt time.Time) (uuid.UUID, Role, error)
+	SaveSession(ctx context.Context, hashedToken string, accountID account.AccountID, role Role, familyID string, expiresAt time.Time) error
+	GetSession(ctx context.Context, hashedToken string) (accountID account.AccountID, role Role, familyID string, used bool, expiresAt time.Time, err error)
+	AtomicRotate(ctx context.Context, hashedOldToken, hashedNewToken string, newExpiresAt time.Time) (account.AccountID, Role, error)
 	RevokeFamily(ctx context.Context, familyID string) error
 }
