@@ -14,26 +14,44 @@ import (
 )
 
 type AuthService struct {
-	accountRepo account.Repository
-	userRepo    user.Repository
-	hasher      auth.Hasher
-	tokenSvc    auth.TokenService
-	store       cache.RedisSessionStore
-	emailSvc    auth.EmailService
-	verifyTTL   time.Duration
-	refreshTTL  time.Duration
+	accountRepo   account.Repository
+	userRepo      user.Repository
+	hasher        auth.Hasher
+	tokenSvc      auth.TokenService
+	store         cache.RedisSessionStore
+	emailSvc      auth.EmailService
+	attemptStore  auth.LoginAttemptStore
+	verifyTTL     time.Duration
+	refreshTTL    time.Duration
+	attemptWindow time.Duration
+	maxAttempts   int
 }
 
-func NewAuthService(ar account.Repository, ur user.Repository, h auth.Hasher, ts auth.TokenService, store cache.RedisSessionStore, emailSvc auth.EmailService, verifyTTL time.Duration, refreshTTL time.Duration) *AuthService {
+func NewAuthService(
+	ar account.Repository,
+	ur user.Repository,
+	h auth.Hasher,
+	ts auth.TokenService,
+	store cache.RedisSessionStore,
+	emailSvc auth.EmailService,
+	attemptStore auth.LoginAttemptStore,
+	verifyTTL time.Duration,
+	refreshTTL time.Duration,
+	attemptWindow time.Duration,
+	maxAttempts int,
+) *AuthService {
 	return &AuthService{
-		accountRepo: ar,
-		userRepo:    ur,
-		hasher:      h,
-		tokenSvc:    ts,
-		store:       store,
-		emailSvc:    emailSvc,
-		verifyTTL:   verifyTTL,
-		refreshTTL:  refreshTTL,
+		accountRepo:   ar,
+		userRepo:      ur,
+		hasher:        h,
+		tokenSvc:      ts,
+		store:         store,
+		emailSvc:      emailSvc,
+		attemptStore:  attemptStore,
+		verifyTTL:     verifyTTL,
+		refreshTTL:    refreshTTL,
+		attemptWindow: attemptWindow,
+		maxAttempts:   maxAttempts,
 	}
 }
 
@@ -67,7 +85,7 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 	}
 
 	if err := s.emailSvc.SendVerificationEmail(email, verificationToken); err != nil {
-		// Log error, but don't fail registration
+		// Log error
 	}
 
 	return u, nil
@@ -85,7 +103,7 @@ func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
 	}
 
 	if acc.Status() == account.StatusActive {
-		return nil // Idempotent: already verified
+		return nil
 	}
 
 	acc.Verify()
@@ -95,12 +113,11 @@ func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
 func (s *AuthService) ResendVerification(ctx context.Context, email string) error {
 	acc, err := s.accountRepo.GetByEmail(ctx, email)
 	if err != nil {
-		// Security: Don't reveal if email exists. Fail silently.
 		return nil
 	}
 
 	if acc.Status() == account.StatusActive {
-		return nil // Already active, fail silently
+		return nil
 	}
 
 	verificationToken, err := s.tokenSvc.GenerateEmailVerificationToken(acc.ID())
@@ -114,7 +131,6 @@ func (s *AuthService) ResendVerification(ctx context.Context, email string) erro
 func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 	acc, err := s.accountRepo.GetByEmail(ctx, email)
 	if err != nil {
-		// Security: Don't reveal if email exists. Fail silently.
 		return nil
 	}
 
@@ -190,14 +206,37 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 		return "", "", time.Time{}, auth.ErrInvalidCredentials
 	}
 
+	if acc.Status() == account.StatusLocked {
+		isLocked, err := s.attemptStore.IsAccountLocked(ctx, acc.ID())
+		if err != nil {
+			return "", "", time.Time{}, err
+		}
+		if isLocked {
+			return "", "", time.Time{}, account.ErrAccountLocked
+		}
+		acc.Unlock()
+		if err := s.accountRepo.Update(ctx, acc); err != nil {
+			return "", "", time.Time{}, err
+		}
+	}
+
 	if acc.Status() == account.StatusBanned {
 		return "", "", time.Time{}, account.ErrAccountBanned
 	}
 
 	match, err := s.hasher.Compare(acc.PasswordHash(), password)
 	if err != nil || !match {
+		attempts, _ := s.attemptStore.IncrementFailedAttempt(ctx, email)
+		if attempts >= s.maxAttempts {
+			acc.Lock()
+			_ = s.accountRepo.Update(ctx, acc)
+			_ = s.attemptStore.LockAccount(ctx, acc.ID(), s.attemptWindow)
+			return "", "", time.Time{}, account.ErrAccountLocked
+		}
 		return "", "", time.Time{}, auth.ErrInvalidCredentials
 	}
+
+	_ = s.attemptStore.ResetFailedAttempts(ctx, email)
 
 	authRole := auth.Role(acc.Role())
 	return s.issueTokens(ctx, acc.ID(), authRole)
