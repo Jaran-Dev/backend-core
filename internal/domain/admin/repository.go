@@ -1,9 +1,12 @@
 package admin
 
-import "context"
+import (
+	"context"
 
-type AdminRepository interface {
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
+)
+
+type Repository interface {
 	Create(ctx context.Context, a *Admin) error
-	GetByID(ctx context.Context, id AdminID) (*Admin, error)
-	GetByEmail(ctx context.Context, email Email) (*Admin, error)
+	GetByAccountID(ctx context.Context, accID account.AccountID) (*Admin, error)
 }
