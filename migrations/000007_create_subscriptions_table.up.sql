@@ -1,12 +1,20 @@
-CREATE TABLE subscriptions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    source TEXT NOT NULL CHECK (source IN ('manual', 'gateway', 'promo')), -- Defense in depth
-    starts_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    ends_at TIMESTAMPTZ, -- NULL means lifetime access
-    provider_ref TEXT,    -- Transaction ID from gateway (empty if manual)
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE enrollments(
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    course_id uuid NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    enrolled_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (account_id, course_id)
 );
 
-CREATE INDEX idx_subscriptions_active ON subscriptions(user_id) 
-WHERE starts_at <= now() AND (ends_at IS NULL OR ends_at > now());
+CREATE TABLE lesson_progress(
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    lesson_id uuid NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+    watched_sec int NOT NULL DEFAULT 0,
+    completed boolean NOT NULL DEFAULT FALSE,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (account_id, lesson_id)
+);
+
+CREATE INDEX idx_progress_account_lesson ON lesson_progress(account_id, lesson_id);
+

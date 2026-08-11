@@ -1,8 +1,5 @@
-CREATE TABLE admins (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email CITEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE admins(
+    account_id uuid PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_admins_email ON admins(email);
