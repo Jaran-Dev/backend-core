@@ -46,3 +46,11 @@ type EmailService interface {
 	SendVerificationEmail(to, token string) error
 	SendPasswordResetEmail(to, token string) error
 }
+
+type LoginAttemptStore interface {
+	IncrementFailedAttempt(ctx context.Context, email string) (int, error)
+	ResetFailedAttempts(ctx context.Context, email string) error
+	LockAccount(ctx context.Context, accountID account.AccountID, duration time.Duration) error
+	IsAccountLocked(ctx context.Context, accountID account.AccountID) (bool, error)
+	UnlockAccount(ctx context.Context, accountID account.AccountID) error
+}
