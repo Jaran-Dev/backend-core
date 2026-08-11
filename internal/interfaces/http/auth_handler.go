@@ -34,10 +34,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"user_id": u.AccountID()})
+	c.JSON(http.StatusCreated, gin.H{"account_id": u.AccountID()})
 }
 
-func (h *AuthHandler) LoginUser(c *gin.Context) {
+func (h *AuthHandler) Login(c *gin.Context) {
 	var req struct {
 		Email    string `json:"email" binding:"required,email"`
 		Password string `json:"password" binding:"required"`

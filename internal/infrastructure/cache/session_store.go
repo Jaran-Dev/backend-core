@@ -66,7 +66,7 @@ func (s *RedisSessionStore) GetSession(ctx context.Context, hashedToken string) 
 		return account.AccountID(uuid.Nil), "", "", false, time.Time{}, err
 	}
 
-	uid, _ := uuid.Parse(res["user_id"])
+	uid, _ := uuid.Parse(res["account_id"])
 	role := auth.Role(res["role"])
 	familyID := res["family_id"]
 	used := res["used"] == "1"
@@ -85,14 +85,13 @@ local new_exp = tonumber(ARGV[3])
 
 if redis.call('EXISTS', old_key) == 0 then return {err='not_found'} end
 
-local user_id = redis.call('HGET', old_key, 'user_id')
+local account_id = redis.call('HGET', old_key, 'account_id')
 local role = redis.call('HGET', old_key, 'role')
 local family_id = redis.call('HGET', old_key, 'family_id')
 local used = redis.call('HGET', old_key, 'used')
 local exp = tonumber(redis.call('HGET', old_key, 'expires_at'))
 
 if used == '1' then
-  -- Reuse detected: nuke the whole family
   local fam_key = 'family:' .. family_id
   local members = redis.call('SMEMBERS', fam_key)
   for _, m in ipairs(members) do redis.call('DEL', 'session:' .. m) end
@@ -102,15 +101,13 @@ end
 
 if exp < now then return {err='expired'} end
 
--- Mark old as used
 redis.call('HSET', old_key, 'used', '1')
 
--- Save new token
-redis.call('HSET', new_key, 'user_id', user_id, 'role', role, 'family_id', family_id, 'used', '0', 'expires_at', new_exp)
+redis.call('HSET', new_key, 'account_id', account_id, 'role', role, 'family_id', family_id, 'used', '0', 'expires_at', new_exp)
 redis.call('EXPIREAT', new_key, new_exp)
 redis.call('SADD', 'family:' .. family_id, ARGV[1])
 
-return {user_id, role, family_id}
+return {account_id, role, family_id}
 `
 
 func (s *RedisSessionStore) AtomicRotate(ctx context.Context, hashedOldToken, hashedNewToken string, newExpiresAt time.Time) (account.AccountID, auth.Role, error) {

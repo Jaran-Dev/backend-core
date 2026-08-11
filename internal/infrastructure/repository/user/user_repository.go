@@ -7,21 +7,11 @@ import (
 
 	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainUser "github.com/Jaran-Dev/backend-core/internal/domain/user"
+	repoAccount "github.com/Jaran-Dev/backend-core/internal/infrastructure/repository/account"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
-
-type AccountModel struct {
-	ID           uuid.UUID `gorm:"primaryKey"`
-	Email        string    `gorm:"uniqueIndex"`
-	PasswordHash string
-	Role         string
-	Status       string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-}
-
-func (AccountModel) TableName() string { return "accounts" }
 
 type UserModel struct {
 	AccountID   uuid.UUID `gorm:"primaryKey"`
@@ -33,6 +23,22 @@ type UserModel struct {
 
 func (UserModel) TableName() string { return "users" }
 
+func (m UserModel) toDomain() *domainUser.User {
+	return domainUser.UnmarshalUser(
+		domainAccount.AccountID(m.AccountID), m.DisplayName, m.UILocale, m.CreatedAt, m.UpdatedAt,
+	)
+}
+
+func userModelFromDomain(u *domainUser.User) UserModel {
+	return UserModel{
+		AccountID:   uuid.UUID(u.AccountID()),
+		DisplayName: u.DisplayName(),
+		UILocale:    u.UILocale(),
+		CreatedAt:   u.CreatedAt(),
+		UpdatedAt:   u.UpdatedAt(),
+	}
+}
+
 type pgRepository struct {
 	db *gorm.DB
 }
@@ -42,23 +48,8 @@ func NewRepository(db *gorm.DB) domainUser.Repository {
 }
 
 func (r *pgRepository) CreateWithAccount(ctx context.Context, acc *domainAccount.Account, u *domainUser.User) error {
-	accModel := AccountModel{
-		ID:           uuid.UUID(acc.ID()),
-		Email:        acc.Email(),
-		PasswordHash: acc.PasswordHash(),
-		Role:         string(acc.Role()),
-		Status:       string(acc.Status()),
-		CreatedAt:    acc.CreatedAt(),
-		UpdatedAt:    acc.UpdatedAt(),
-	}
-
-	userModel := UserModel{
-		AccountID:   uuid.UUID(u.AccountID()),
-		DisplayName: u.DisplayName(),
-		UILocale:    u.UILocale(),
-		CreatedAt:   acc.CreatedAt(),
-		UpdatedAt:   acc.UpdatedAt(),
-	}
+	accModel := repoAccount.AccountModelFromDomain(acc)
+	userModel := userModelFromDomain(u)
 
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&accModel).Error; err != nil {
@@ -88,5 +79,5 @@ func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.A
 		return nil, err
 	}
 
-	return domainUser.UnmarshalUser(domainAccount.AccountID(model.AccountID), model.DisplayName, model.UILocale, model.CreatedAt, model.UpdatedAt), nil
+	return model.toDomain(), nil
 }

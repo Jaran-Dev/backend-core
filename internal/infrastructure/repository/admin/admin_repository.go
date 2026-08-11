@@ -1,4 +1,4 @@
-package account
+package admin
 
 import (
 	"context"
@@ -6,62 +6,51 @@ import (
 	"time"
 
 	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
+	domainAdmin "github.com/Jaran-Dev/backend-core/internal/domain/admin"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-// AccountModel is the GORM persistence model
-type AccountModel struct {
-	ID           uuid.UUID `gorm:"primaryKey"`
-	Email        string    `gorm:"uniqueIndex"`
-	PasswordHash string
-	Role         string
-	Status       string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+type AdminModel struct {
+	AccountID uuid.UUID `gorm:"primaryKey"`
+	CreatedAt time.Time
 }
 
-func (AccountModel) TableName() string { return "accounts" }
+func (AdminModel) TableName() string { return "admins" }
+
+func (m AdminModel) toDomain() *domainAdmin.Admin {
+	return domainAdmin.UnmarshalAdmin(domainAccount.AccountID(m.AccountID), m.CreatedAt)
+}
+
+func adminModelFromDomain(a *domainAdmin.Admin) AdminModel {
+	return AdminModel{
+		AccountID: uuid.UUID(a.AccountID()),
+		CreatedAt: a.CreatedAt(),
+	}
+}
 
 type pgRepository struct {
 	db *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) domainAccount.Repository {
+func NewRepository(db *gorm.DB) domainAdmin.Repository {
 	return &pgRepository{db: db}
 }
 
-func (r *pgRepository) Create(ctx context.Context, acc *domainAccount.Account) error {
-	model := AccountModel{
-		ID:           uuid.UUID(acc.ID()),
-		Email:        acc.Email(),
-		PasswordHash: acc.PasswordHash(),
-		Role:         string(acc.Role()),
-		Status:       string(acc.Status()),
-		CreatedAt:    acc.CreatedAt(),
-		UpdatedAt:    acc.UpdatedAt(),
-	}
-
-	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			return domainAccount.ErrAccountAlreadyExists
-		}
-		return err
-	}
-	return nil
+func (r *pgRepository) Create(ctx context.Context, a *domainAdmin.Admin) error {
+	model := adminModelFromDomain(a)
+	return r.db.WithContext(ctx).Create(&model).Error
 }
 
-func (r *pgRepository) GetByEmail(ctx context.Context, email string) (*domainAccount.Account, error) {
-	var model AccountModel
-	err := r.db.WithContext(ctx).Where("email = ?", email).First(&model).Error
+func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.AccountID) (*domainAdmin.Admin, error) {
+	var model AdminModel
+	err := r.db.WithContext(ctx).First(&model, "account_id = ?", uuid.UUID(accID)).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, domainAccount.ErrAccountNotFound
+			return nil, errors.New("admin profile not found")
 		}
 		return nil, err
 	}
-
-	return domainAccount.UnmarshalAccount(
-		model.ID, model.Email, model.PasswordHash, model.Role, model.Status, model.CreatedAt, model.UpdatedAt,
-	)
+	return model.toDomain(), nil
 }
