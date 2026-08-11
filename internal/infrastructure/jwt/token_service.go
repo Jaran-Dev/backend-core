@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	"github.com/Jaran-Dev/backend-core/internal/domain/auth"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -66,8 +67,7 @@ func (s *TokenService) ValidateAccessToken(tokenString string) (*auth.AccessToke
 
 	roleStr, _ := claims["role"].(string)
 	return &auth.AccessTokenClaims{
-		UserID:    uid,
+		AccountID: account.AccountID(uid),
 		Role:      auth.Role(roleStr),
-		TokenType: "access",
 	}, nil
 }

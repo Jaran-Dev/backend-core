@@ -7,6 +7,6 @@ import (
 )
 
 type Repository interface {
-	Create(ctx context.Context, u *User) error
+	CreateWithAccount(ctx context.Context, acc *account.Account, u *User) error
 	GetByAccountID(ctx context.Context, accID account.AccountID) (*User, error)
 }

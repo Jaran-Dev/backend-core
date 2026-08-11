@@ -1,93 +1,67 @@
-package admin
+package account
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
-	domainAdmin "github.com/Jaran-Dev/backend-core/internal/domain/admin"
-	"github.com/Jaran-Dev/backend-core/internal/infrastructure/repository"
-
+	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
+	"gorm.io/gorm"
 )
 
-type pgRepository struct {
-	db repository.DBTX
+// AccountModel is the GORM persistence model
+type AccountModel struct {
+	ID           uuid.UUID `gorm:"primaryKey"`
+	Email        string    `gorm:"uniqueIndex"`
+	PasswordHash string
+	Role         string
+	Status       string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
-func NewRepository(db repository.DBTX) domainAdmin.AdminRepository {
+func (AccountModel) TableName() string { return "accounts" }
+
+type pgRepository struct {
+	db *gorm.DB
+}
+
+func NewRepository(db *gorm.DB) domainAccount.Repository {
 	return &pgRepository{db: db}
 }
 
-func (r *pgRepository) Create(ctx context.Context, a *domainAdmin.Admin) error {
-	query := `
-        INSERT INTO admins (id, email, password_hash, created_at)
-        VALUES ($1, $2, $3, $4)
-    `
-	_, err := r.db.Exec(ctx, query,
-		uuid.UUID(a.ID()),
-		a.Email().String(),
-		a.PasswordHash(),
-		a.CreatedAt(),
-	)
-	if err != nil {
-		// Check for Postgres unique violation (code 23505)
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return domainAdmin.ErrAdminAlreadyExists
+func (r *pgRepository) Create(ctx context.Context, acc *domainAccount.Account) error {
+	model := AccountModel{
+		ID:           uuid.UUID(acc.ID()),
+		Email:        acc.Email(),
+		PasswordHash: acc.PasswordHash(),
+		Role:         string(acc.Role()),
+		Status:       string(acc.Status()),
+		CreatedAt:    acc.CreatedAt(),
+		UpdatedAt:    acc.UpdatedAt(),
+	}
+
+	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return domainAccount.ErrAccountAlreadyExists
 		}
-		return fmt.Errorf("failed to create admin: %w", err)
+		return err
 	}
 	return nil
 }
 
-func (r *pgRepository) GetByID(ctx context.Context, id domainAdmin.AdminID) (*domainAdmin.Admin, error) {
-	query := `
-        SELECT id, email, password_hash, created_at
-        FROM admins
-        WHERE id = $1
-    `
-	row := r.db.QueryRow(ctx, query, uuid.UUID(id))
-	return r.scanAdmin(row)
-}
-
-func (r *pgRepository) GetByEmail(ctx context.Context, email domainAdmin.Email) (*domainAdmin.Admin, error) {
-	query := `
-        SELECT id, email, password_hash, created_at
-        FROM admins
-        WHERE email = $1
-    `
-	row := r.db.QueryRow(ctx, query, email.String())
-	return r.scanAdmin(row)
-}
-
-type rowScanner interface {
-	Scan(dest ...interface{}) error
-}
-
-func (r *pgRepository) scanAdmin(row rowScanner) (*domainAdmin.Admin, error) {
-	var (
-		id           uuid.UUID
-		emailStr     string
-		passwordHash string
-		createdAt    time.Time
-	)
-
-	err := row.Scan(
-		&id,
-		&emailStr,
-		&passwordHash,
-		&createdAt,
-	)
+func (r *pgRepository) GetByEmail(ctx context.Context, email string) (*domainAccount.Account, error) {
+	var model AccountModel
+	err := r.db.WithContext(ctx).Where("email = ?", email).First(&model).Error
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domainAdmin.ErrAdminNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domainAccount.ErrAccountNotFound
 		}
-		return nil, fmt.Errorf("failed to scan admin row: %w", err)
+		return nil, err
 	}
 
-	return domainAdmin.UnmarshalAdmin(id, emailStr, passwordHash, createdAt)
+	return domainAccount.UnmarshalAccount(
+		model.ID, model.Email, model.PasswordHash, model.Role, model.Status, model.CreatedAt, model.UpdatedAt,
+	)
 }

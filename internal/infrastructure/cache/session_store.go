@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	"github.com/Jaran-Dev/backend-core/internal/domain/auth"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -35,7 +36,7 @@ func GenerateOpaqueToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func (s *RedisSessionStore) SaveSession(ctx context.Context, hashedToken string, userID uuid.UUID, role auth.Role, familyID string, expiresAt time.Time) error {
+func (s *RedisSessionStore) SaveSession(ctx context.Context, hashedToken string, userID account.AccountID, role auth.Role, familyID string, expiresAt time.Time) error {
 	key := fmt.Sprintf("session:%s", hashedToken)
 	ttl := time.Until(expiresAt)
 	if ttl <= 0 {
@@ -50,14 +51,14 @@ func (s *RedisSessionStore) SaveSession(ctx context.Context, hashedToken string,
 	return err
 }
 
-func (s *RedisSessionStore) GetSession(ctx context.Context, hashedToken string) (uuid.UUID, auth.Role, string, bool, time.Time, error) {
+func (s *RedisSessionStore) GetSession(ctx context.Context, hashedToken string) (account.AccountID, auth.Role, string, bool, time.Time, error) {
 	key := fmt.Sprintf("session:%s", hashedToken)
 	res, err := s.client.HGetAll(ctx, key).Result()
 	if err == redis.Nil || len(res) == 0 {
-		return uuid.Nil, "", "", false, time.Time{}, auth.ErrTokenNotFound
+		return account.AccountID(uuid.Nil), "", "", false, time.Time{}, auth.ErrTokenNotFound
 	}
 	if err != nil {
-		return uuid.Nil, "", "", false, time.Time{}, err
+		return account.AccountID(uuid.Nil), "", "", false, time.Time{}, err
 	}
 
 	uid, _ := uuid.Parse(res["user_id"])
@@ -67,7 +68,7 @@ func (s *RedisSessionStore) GetSession(ctx context.Context, hashedToken string) 
 	expUnix, _ := strconv.ParseInt(res["expires_at"], 10, 64)
 	exp := time.Unix(expUnix, 0)
 
-	return uid, role, familyID, used, exp, nil
+	return account.AccountID(uid), role, familyID, used, exp, nil
 }
 
 // AtomicRotate uses a Lua script to prevent TOCTOU races during refresh token rotation.
@@ -107,28 +108,28 @@ redis.call('SADD', 'family:' .. family_id, ARGV[1])
 return {user_id, role, family_id}
 `
 
-func (s *RedisSessionStore) AtomicRotate(ctx context.Context, hashedOldToken, hashedNewToken string, newExpiresAt time.Time) (uuid.UUID, auth.Role, error) {
+func (s *RedisSessionStore) AtomicRotate(ctx context.Context, hashedOldToken, hashedNewToken string, newExpiresAt time.Time) (account.AccountID, auth.Role, error) {
 	now := time.Now().Unix()
 	newExp := newExpiresAt.Unix()
 
 	res, err := s.client.Eval(ctx, rotateScript, []string{hashedOldToken}, hashedNewToken, now, newExp).Result()
 	if err != nil {
 		if err.Error() == "not_found" {
-			return uuid.Nil, "", auth.ErrTokenNotFound
+			return account.AccountID(uuid.Nil), "", auth.ErrTokenNotFound
 		}
 		if err.Error() == "reuse" {
-			return uuid.Nil, "", auth.ErrRefreshTokenReused
+			return account.AccountID(uuid.Nil), "", auth.ErrRefreshTokenReused
 		}
 		if err.Error() == "expired" {
-			return uuid.Nil, "", auth.ErrTokenExpired
+			return account.AccountID(uuid.Nil), "", auth.ErrTokenExpired
 		}
-		return uuid.Nil, "", err
+		return account.AccountID(uuid.Nil), "", err
 	}
 
 	vals := res.([]interface{})
 	uid, _ := uuid.Parse(vals[0].(string))
 	role := auth.Role(vals[1].(string))
-	return uid, role, nil
+	return account.AccountID(uid), role, nil
 }
 
 func (s *RedisSessionStore) RevokeFamily(ctx context.Context, familyID string) error {
