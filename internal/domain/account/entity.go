@@ -46,10 +46,9 @@ func NewAccount(email, passwordHash string, role Role) (*Account, error) {
 		email:        email,
 		passwordHash: passwordHash,
 		role:         role,
-		// Default to pending verification. Admins created manually could bypass this.
-		status:    StatusPendingVerification,
-		createdAt: time.Now(),
-		updatedAt: time.Now(),
+		status:       StatusPendingVerification,
+		createdAt:    time.Now(),
+		updatedAt:    time.Now(),
 	}, nil
 }
 
@@ -66,6 +65,16 @@ func (a *Account) Verify() {
 		a.status = StatusActive
 		a.updatedAt = time.Now()
 	}
+}
+
+func (a *Account) Lock() {
+	a.status = StatusLocked
+	a.updatedAt = time.Now()
+}
+
+func (a *Account) Unlock() {
+	a.status = StatusActive
+	a.updatedAt = time.Now()
 }
 
 func (a *Account) UpdatePasswordHash(newHash string) {
