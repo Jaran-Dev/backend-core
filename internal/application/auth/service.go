@@ -19,16 +19,20 @@ type AuthService struct {
 	hasher      auth.Hasher
 	tokenSvc    auth.TokenService
 	store       cache.RedisSessionStore
+	emailSvc    auth.EmailService
+	verifyTTL   time.Duration
 	refreshTTL  time.Duration
 }
 
-func NewAuthService(ar account.Repository, ur user.Repository, h auth.Hasher, ts auth.TokenService, store cache.RedisSessionStore, refreshTTL time.Duration) *AuthService {
+func NewAuthService(ar account.Repository, ur user.Repository, h auth.Hasher, ts auth.TokenService, store cache.RedisSessionStore, emailSvc auth.EmailService, verifyTTL time.Duration, refreshTTL time.Duration) *AuthService {
 	return &AuthService{
 		accountRepo: ar,
 		userRepo:    ur,
 		hasher:      h,
 		tokenSvc:    ts,
 		store:       store,
+		emailSvc:    emailSvc,
+		verifyTTL:   verifyTTL,
 		refreshTTL:  refreshTTL,
 	}
 }
@@ -57,7 +61,127 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 		return nil, err
 	}
 
+	verificationToken, err := s.tokenSvc.GenerateEmailVerificationToken(acc.ID())
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.emailSvc.SendVerificationEmail(email, verificationToken); err != nil {
+		// Log error, but don't fail registration
+	}
+
 	return u, nil
+}
+
+func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
+	accID, err := s.tokenSvc.ValidateEmailVerificationToken(token)
+	if err != nil {
+		return auth.ErrInvalidCredentials
+	}
+
+	acc, err := s.accountRepo.GetByID(ctx, accID)
+	if err != nil {
+		return err
+	}
+
+	if acc.Status() == account.StatusActive {
+		return nil // Idempotent: already verified
+	}
+
+	acc.Verify()
+	return s.accountRepo.Update(ctx, acc)
+}
+
+func (s *AuthService) ResendVerification(ctx context.Context, email string) error {
+	acc, err := s.accountRepo.GetByEmail(ctx, email)
+	if err != nil {
+		// Security: Don't reveal if email exists. Fail silently.
+		return nil
+	}
+
+	if acc.Status() == account.StatusActive {
+		return nil // Already active, fail silently
+	}
+
+	verificationToken, err := s.tokenSvc.GenerateEmailVerificationToken(acc.ID())
+	if err != nil {
+		return err
+	}
+
+	return s.emailSvc.SendVerificationEmail(email, verificationToken)
+}
+
+func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
+	acc, err := s.accountRepo.GetByEmail(ctx, email)
+	if err != nil {
+		// Security: Don't reveal if email exists. Fail silently.
+		return nil
+	}
+
+	rawToken, err := cache.GenerateOpaqueToken()
+	if err != nil {
+		return err
+	}
+	hashedToken := cache.HashToken(rawToken)
+	expiresAt := time.Now().Add(s.verifyTTL)
+
+	if err := s.store.SavePasswordResetToken(ctx, acc.ID(), hashedToken, expiresAt); err != nil {
+		return err
+	}
+
+	return s.emailSvc.SendPasswordResetEmail(email, rawToken)
+}
+
+func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword string) error {
+	hashedToken := cache.HashToken(token)
+
+	accID, err := s.store.GetAccountIDByPasswordResetToken(ctx, hashedToken)
+	if err != nil {
+		return errors.New("invalid or expired reset token")
+	}
+
+	_ = s.store.DeletePasswordResetToken(ctx, hashedToken)
+
+	acc, err := s.accountRepo.GetByID(ctx, accID)
+	if err != nil {
+		return err
+	}
+
+	newHash, err := s.hasher.Hash(newPassword)
+	if err != nil {
+		return err
+	}
+
+	acc.UpdatePasswordHash(newHash)
+	if err := s.accountRepo.Update(ctx, acc); err != nil {
+		return err
+	}
+
+	return s.store.RevokeAllByAccountID(ctx, acc.ID())
+}
+
+func (s *AuthService) ChangePassword(ctx context.Context, accID account.AccountID, currentPassword, newPassword string) error {
+	acc, err := s.accountRepo.GetByID(ctx, accID)
+	if err != nil {
+		return err
+	}
+
+	match, err := s.hasher.Compare(acc.PasswordHash(), currentPassword)
+	if err != nil || !match {
+		return auth.ErrInvalidCredentials
+	}
+
+	newHash, err := s.hasher.Hash(newPassword)
+	if err != nil {
+		return err
+	}
+
+	acc.UpdatePasswordHash(newHash)
+	if err := s.accountRepo.Update(ctx, acc); err != nil {
+		return err
+	}
+
+	return s.store.RevokeAllByAccountID(ctx, acc.ID())
 }
 
 func (s *AuthService) Login(ctx context.Context, email, password string) (string, string, time.Time, error) {
