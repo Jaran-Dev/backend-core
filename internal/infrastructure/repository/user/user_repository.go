@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// We define both models here to handle the atomic transaction cleanly
 type AccountModel struct {
 	ID           uuid.UUID `gorm:"primaryKey"`
 	Email        string    `gorm:"uniqueIndex"`
