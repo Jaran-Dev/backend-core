@@ -33,7 +33,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"user_id": u.ID()})
+	c.JSON(http.StatusCreated, gin.H{"user_id": u.AccountID()})
 }
 
 func (h *AuthHandler) LoginUser(c *gin.Context) {
@@ -46,7 +46,7 @@ func (h *AuthHandler) LoginUser(c *gin.Context) {
 		return
 	}
 
-	access, refresh, exp, err := h.svc.LoginUser(c.Request.Context(), req.Email, req.Password)
+	access, refresh, exp, err := h.svc.Login(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
