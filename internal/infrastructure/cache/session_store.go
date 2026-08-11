@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -36,7 +37,7 @@ func GenerateOpaqueToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func (s *RedisSessionStore) SaveSession(ctx context.Context, hashedToken string, userID account.AccountID, role auth.Role, familyID string, expiresAt time.Time) error {
+func (s *RedisSessionStore) SaveSession(ctx context.Context, hashedToken string, accID account.AccountID, role auth.Role, familyID string, expiresAt time.Time) error {
 	key := fmt.Sprintf("session:%s", hashedToken)
 	ttl := time.Until(expiresAt)
 	if ttl <= 0 {
@@ -44,9 +45,13 @@ func (s *RedisSessionStore) SaveSession(ctx context.Context, hashedToken string,
 	}
 
 	pipe := s.client.TxPipeline()
-	pipe.HSet(ctx, key, "user_id", userID.String(), "role", string(role), "family_id", familyID, "used", "0", "expires_at", expiresAt.Unix())
+	pipe.HSet(ctx, key, "account_id", accID.String(), "role", string(role), "family_id", familyID, "used", "0", "expires_at", expiresAt.Unix())
 	pipe.Expire(ctx, key, ttl)
 	pipe.SAdd(ctx, fmt.Sprintf("family:%s", familyID), hashedToken)
+
+	pipe.SAdd(ctx, fmt.Sprintf("account_sessions:%s", accID.String()), hashedToken)
+	pipe.Expire(ctx, fmt.Sprintf("account_sessions:%s", accID.String()), ttl)
+
 	_, err := pipe.Exec(ctx)
 	return err
 }
@@ -147,4 +152,50 @@ func (s *RedisSessionStore) RevokeFamily(ctx context.Context, familyID string) e
 	}
 	keys = append(keys, famKey)
 	return s.client.Del(ctx, keys...).Err()
+}
+
+func (s *RedisSessionStore) RevokeAllByAccountID(ctx context.Context, accID account.AccountID) error {
+	sessionsKey := fmt.Sprintf("account_sessions:%s", accID.String())
+	members, err := s.client.SMembers(ctx, sessionsKey).Result()
+	if err != nil {
+		return err
+	}
+	if len(members) == 0 {
+		return nil
+	}
+
+	keys := make([]string, len(members))
+	for i, m := range members {
+		keys[i] = fmt.Sprintf("session:%s", m)
+	}
+	keys = append(keys, sessionsKey)
+	return s.client.Del(ctx, keys...).Err()
+}
+
+func (s *RedisSessionStore) SavePasswordResetToken(ctx context.Context, accID account.AccountID, hashedToken string, expiresAt time.Time) error {
+	key := fmt.Sprintf("pwd_reset:%s", hashedToken)
+	ttl := time.Until(expiresAt)
+	if ttl <= 0 {
+		return errors.New("token already expired")
+	}
+	return s.client.Set(ctx, key, accID.String(), ttl).Err()
+}
+
+func (s *RedisSessionStore) GetAccountIDByPasswordResetToken(ctx context.Context, hashedToken string) (account.AccountID, error) {
+	key := fmt.Sprintf("pwd_reset:%s", hashedToken)
+	val, err := s.client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return account.AccountID(uuid.Nil), errors.New("invalid or expired reset token")
+	}
+	if err != nil {
+		return account.AccountID(uuid.Nil), err
+	}
+
+	uid, _ := uuid.Parse(val)
+	return account.AccountID(uid), nil
+}
+
+func (s *RedisSessionStore) DeletePasswordResetToken(ctx context.Context, hashedToken string) error {
+	key := fmt.Sprintf("pwd_reset:%s", hashedToken)
+	return s.client.Del(ctx, key).Err()
 }
