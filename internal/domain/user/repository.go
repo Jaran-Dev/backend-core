@@ -1,9 +1,12 @@
 package user
 
-import "context"
+import (
+	"context"
 
-type UserRepository interface {
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
+)
+
+type Repository interface {
 	Create(ctx context.Context, u *User) error
-	GetByID(ctx context.Context, id UserID) (*User, error)
-	GetByEmail(ctx context.Context, email Email) (*User, error)
+	GetByAccountID(ctx context.Context, accID account.AccountID) (*User, error)
 }
