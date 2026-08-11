@@ -27,6 +27,8 @@ type AccessTokenClaims struct {
 type TokenService interface {
 	GenerateAccessToken(accountID account.AccountID, role Role) (string, time.Time, error)
 	ValidateAccessToken(tokenString string) (*AccessTokenClaims, error)
+	GenerateEmailVerificationToken(accountID account.AccountID) (string, error)
+	ValidateEmailVerificationToken(tokenString string) (account.AccountID, error)
 }
 
 type SessionStore interface {
@@ -34,4 +36,13 @@ type SessionStore interface {
 	GetSession(ctx context.Context, hashedToken string) (accountID account.AccountID, role Role, familyID string, used bool, expiresAt time.Time, err error)
 	AtomicRotate(ctx context.Context, hashedOldToken, hashedNewToken string, newExpiresAt time.Time) (account.AccountID, Role, error)
 	RevokeFamily(ctx context.Context, familyID string) error
+	RevokeAllByAccountID(ctx context.Context, accountID account.AccountID) error
+	SavePasswordResetToken(ctx context.Context, accountID account.AccountID, hashedToken string, expiresAt time.Time) error
+	GetAccountIDByPasswordResetToken(ctx context.Context, hashedToken string) (account.AccountID, error)
+	DeletePasswordResetToken(ctx context.Context, hashedToken string) error
+}
+
+type EmailService interface {
+	SendVerificationEmail(to, token string) error
+	SendPasswordResetEmail(to, token string) error
 }
