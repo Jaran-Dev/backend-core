@@ -2,15 +2,7 @@ package admin
 
 import (
 	"net/mail"
-
-	"github.com/google/uuid"
 )
-
-type AdminID uuid.UUID
-
-func (id AdminID) String() string {
-	return uuid.UUID(id).String()
-}
 
 type Email string
 

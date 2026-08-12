@@ -2,15 +2,7 @@ package user
 
 import (
 	"net/mail"
-
-	"github.com/google/uuid"
 )
-
-type UserID uuid.UUID
-
-func (id UserID) String() string {
-	return uuid.UUID(id).String()
-}
 
 type Email string
 

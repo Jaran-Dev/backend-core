@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Jaran-Dev/backend-core/internal/application/auth"
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	"github.com/gin-gonic/gin"
 )
 
@@ -33,10 +34,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"user_id": u.ID()})
+	c.JSON(http.StatusCreated, gin.H{"account_id": u.AccountID()})
 }
 
-func (h *AuthHandler) LoginUser(c *gin.Context) {
+func (h *AuthHandler) Login(c *gin.Context) {
 	var req struct {
 		Email    string `json:"email" binding:"required,email"`
 		Password string `json:"password" binding:"required"`
@@ -46,7 +47,7 @@ func (h *AuthHandler) LoginUser(c *gin.Context) {
 		return
 	}
 
-	access, refresh, exp, err := h.svc.LoginUser(c.Request.Context(), req.Email, req.Password)
+	access, refresh, exp, err := h.svc.Login(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
@@ -98,4 +99,90 @@ func (h *AuthHandler) setRefreshCookie(c *gin.Context, token string, expires tim
 		true, // Secure (requires HTTPS in prod)
 		true, // HttpOnly
 	)
+}
+
+func (h *AuthHandler) VerifyEmail(c *gin.Context) {
+	var req struct {
+		Token string `json:"token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.svc.VerifyEmail(c.Request.Context(), req.Token); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or expired token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "email verified successfully"})
+}
+
+func (h *AuthHandler) ResendVerification(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	_ = h.svc.ResendVerification(c.Request.Context(), req.Email)
+	c.JSON(http.StatusOK, gin.H{"message": "if the email exists, a verification link has been sent"})
+}
+
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	_ = h.svc.ForgotPassword(c.Request.Context(), req.Email)
+	c.JSON(http.StatusOK, gin.H{"message": "if the email exists, a password reset link has been sent"})
+}
+
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req struct {
+		Token       string `json:"token" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.svc.ResetPassword(c.Request.Context(), req.Token, req.NewPassword); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "password reset successfully"})
+}
+
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	var req struct {
+		CurrentPassword string `json:"current_password" binding:"required"`
+		NewPassword     string `json:"new_password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	accIDVal, exists := c.Get("account_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	accID := accIDVal.(account.AccountID)
+
+	if err := h.svc.ChangePassword(c.Request.Context(), accID, req.CurrentPassword, req.NewPassword); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid current password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "password changed successfully. please log in again."})
 }

@@ -21,9 +21,10 @@ const (
 type Status string
 
 const (
-	StatusActive Status = "active"
-	StatusBanned Status = "banned"
-	StatusLocked Status = "locked"
+	StatusActive              Status = "active"
+	StatusBanned              Status = "banned"
+	StatusLocked              Status = "locked"
+	StatusPendingVerification Status = "pending_verification"
 )
 
 type Account struct {
@@ -45,7 +46,7 @@ func NewAccount(email, passwordHash string, role Role) (*Account, error) {
 		email:        email,
 		passwordHash: passwordHash,
 		role:         role,
-		status:       StatusActive,
+		status:       StatusPendingVerification,
 		createdAt:    time.Now(),
 		updatedAt:    time.Now(),
 	}, nil
@@ -58,6 +59,28 @@ func (a *Account) Role() Role           { return a.role }
 func (a *Account) Status() Status       { return a.status }
 func (a *Account) CreatedAt() time.Time { return a.createdAt }
 func (a *Account) UpdatedAt() time.Time { return a.updatedAt }
+
+func (a *Account) Verify() {
+	if a.status == StatusPendingVerification {
+		a.status = StatusActive
+		a.updatedAt = time.Now()
+	}
+}
+
+func (a *Account) Lock() {
+	a.status = StatusLocked
+	a.updatedAt = time.Now()
+}
+
+func (a *Account) Unlock() {
+	a.status = StatusActive
+	a.updatedAt = time.Now()
+}
+
+func (a *Account) UpdatePasswordHash(newHash string) {
+	a.passwordHash = newHash
+	a.updatedAt = time.Now()
+}
 
 func UnmarshalAccount(id uuid.UUID, email, passwordHash, roleStr, statusStr string, createdAt, updatedAt time.Time) (*Account, error) {
 	role := Role(roleStr)

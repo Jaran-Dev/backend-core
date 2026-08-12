@@ -28,6 +28,9 @@ func (u *User) AccountID() account.AccountID { return u.accountID }
 func (u *User) DisplayName() string          { return u.displayName }
 func (u *User) UILocale() string             { return u.uiLocale }
 
+func (u *User) CreatedAt() time.Time { return u.createdAt }
+func (u *User) UpdatedAt() time.Time { return u.updatedAt }
+
 func UnmarshalUser(accID account.AccountID, displayName, uiLocale string, createdAt, updatedAt time.Time) *User {
 	return &User{
 		accountID:   accID,
