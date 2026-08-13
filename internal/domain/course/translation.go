@@ -31,3 +31,11 @@ func (t *CourseTranslation) Title() string {
 func (t *CourseTranslation) Description() string {
 	return t.description
 }
+
+func (t *CourseTranslation) UpdateTitle(title string) {
+	t.title = title
+}
+
+func (t *CourseTranslation) UpdateDescription(description string) {
+	t.description = description
+}
