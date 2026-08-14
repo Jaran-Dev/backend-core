@@ -28,7 +28,7 @@ func (m AccountModel) toDomain() (*domainAccount.Account, error) {
 	)
 }
 
-func AccountModelFromDomain(acc *domainAccount.Account) AccountModel {
+func FromDomain(acc *domainAccount.Account) AccountModel {
 	return AccountModel{
 		ID:           uuid.UUID(acc.ID()),
 		Email:        acc.Email(),
@@ -49,7 +49,7 @@ func NewRepository(db *gorm.DB) domainAccount.Repository {
 }
 
 func (r *pgRepository) Create(ctx context.Context, acc *domainAccount.Account) error {
-	model := AccountModelFromDomain(acc)
+	model := FromDomain(acc)
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return domainAccount.ErrAccountAlreadyExists
@@ -84,6 +84,6 @@ func (r *pgRepository) GetByID(ctx context.Context, id domainAccount.AccountID) 
 }
 
 func (r *pgRepository) Update(ctx context.Context, acc *domainAccount.Account) error {
-	model := AccountModelFromDomain(acc)
+	model := FromDomain(acc)
 	return r.db.WithContext(ctx).Save(&model).Error
 }

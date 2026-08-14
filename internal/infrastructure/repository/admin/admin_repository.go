@@ -23,7 +23,7 @@ func (m AdminModel) toDomain() *domainAdmin.Admin {
 	return domainAdmin.UnmarshalAdmin(domainAccount.AccountID(m.AccountID), m.CreatedAt)
 }
 
-func adminModelFromDomain(a *domainAdmin.Admin) AdminModel {
+func fromDomain(a *domainAdmin.Admin) AdminModel {
 	return AdminModel{
 		AccountID: uuid.UUID(a.AccountID()),
 		CreatedAt: a.CreatedAt(),
@@ -39,7 +39,7 @@ func NewRepository(db *gorm.DB) domainAdmin.Repository {
 }
 
 func (r *pgRepository) Create(ctx context.Context, a *domainAdmin.Admin) error {
-	model := adminModelFromDomain(a)
+	model := fromDomain(a)
 	return r.db.WithContext(ctx).Create(&model).Error
 }
 
