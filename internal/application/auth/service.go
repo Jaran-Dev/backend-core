@@ -91,6 +91,52 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 	return u, nil
 }
 
+func (s *AuthService) Login(ctx context.Context, email, password string) (string, string, time.Time, error) {
+	acc, err := s.accountRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return "", "", time.Time{}, auth.ErrInvalidCredentials
+	}
+
+	if acc.PasswordHash() == "" {
+		return "", "", time.Time{}, auth.ErrInvalidCredentials
+	}
+
+	if acc.Status() == account.StatusLocked {
+		isLocked, err := s.attemptStore.IsAccountLocked(ctx, acc.ID())
+		if err != nil {
+			return "", "", time.Time{}, err
+		}
+		if isLocked {
+			return "", "", time.Time{}, account.ErrAccountLocked
+		}
+		acc.Unlock()
+		if err := s.accountRepo.Update(ctx, acc); err != nil {
+			return "", "", time.Time{}, err
+		}
+	}
+
+	if acc.Status() == account.StatusBanned {
+		return "", "", time.Time{}, account.ErrAccountBanned
+	}
+
+	match, err := s.hasher.Compare(acc.PasswordHash(), password)
+	if err != nil || !match {
+		attempts, _ := s.attemptStore.IncrementFailedAttempt(ctx, email)
+		if attempts >= s.maxAttempts {
+			acc.Lock()
+			_ = s.accountRepo.Update(ctx, acc)
+			_ = s.attemptStore.LockAccount(ctx, acc.ID(), s.attemptWindow)
+			return "", "", time.Time{}, account.ErrAccountLocked
+		}
+		return "", "", time.Time{}, auth.ErrInvalidCredentials
+	}
+
+	_ = s.attemptStore.ResetFailedAttempts(ctx, email)
+
+	authRole := auth.Role(acc.Role())
+	return s.issueTokens(ctx, acc.ID(), authRole)
+}
+
 func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
 	accID, err := s.tokenSvc.ValidateEmailVerificationToken(token)
 	if err != nil {
@@ -198,48 +244,6 @@ func (s *AuthService) ChangePassword(ctx context.Context, accID account.AccountI
 	}
 
 	return s.store.RevokeAllByAccountID(ctx, acc.ID())
-}
-
-func (s *AuthService) Login(ctx context.Context, email, password string) (string, string, time.Time, error) {
-	acc, err := s.accountRepo.GetByEmail(ctx, email)
-	if err != nil {
-		return "", "", time.Time{}, auth.ErrInvalidCredentials
-	}
-
-	if acc.Status() == account.StatusLocked {
-		isLocked, err := s.attemptStore.IsAccountLocked(ctx, acc.ID())
-		if err != nil {
-			return "", "", time.Time{}, err
-		}
-		if isLocked {
-			return "", "", time.Time{}, account.ErrAccountLocked
-		}
-		acc.Unlock()
-		if err := s.accountRepo.Update(ctx, acc); err != nil {
-			return "", "", time.Time{}, err
-		}
-	}
-
-	if acc.Status() == account.StatusBanned {
-		return "", "", time.Time{}, account.ErrAccountBanned
-	}
-
-	match, err := s.hasher.Compare(acc.PasswordHash(), password)
-	if err != nil || !match {
-		attempts, _ := s.attemptStore.IncrementFailedAttempt(ctx, email)
-		if attempts >= s.maxAttempts {
-			acc.Lock()
-			_ = s.accountRepo.Update(ctx, acc)
-			_ = s.attemptStore.LockAccount(ctx, acc.ID(), s.attemptWindow)
-			return "", "", time.Time{}, account.ErrAccountLocked
-		}
-		return "", "", time.Time{}, auth.ErrInvalidCredentials
-	}
-
-	_ = s.attemptStore.ResetFailedAttempts(ctx, email)
-
-	authRole := auth.Role(acc.Role())
-	return s.issueTokens(ctx, acc.ID(), authRole)
 }
 
 func (s *AuthService) Refresh(ctx context.Context, rawRefreshToken string) (string, string, time.Time, error) {
