@@ -97,7 +97,7 @@ func (s *OAuthService) HandleCallback(ctx context.Context, providerName domainOa
 		if err == nil {
 			accID = existingAcc.ID()
 		} else {
-			acc, err := domainAccount.NewAccount(profile.Email, "", domainAccount.RoleUser)
+			acc, err := domainAccount.NewAccount(profile.Email, nil, domainAccount.RoleUser)
 			if err != nil {
 				return "", "", time.Time{}, err
 			}
@@ -181,7 +181,7 @@ func (s *OAuthService) UnlinkAccount(ctx context.Context, accID domainAccount.Ac
 	}
 
 	// Domain rule: cannot unlink if no password and this is the last OAuth link
-	if acc.PasswordHash() == "" && len(links) == 1 {
+	if acc.PasswordHash() == nil && len(links) == 1 {
 		return domainOauth.ErrCannotUnlinkLastMethod
 	}
 

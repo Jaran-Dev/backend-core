@@ -68,7 +68,7 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 		return nil, err
 	}
 
-	acc, err := account.NewAccount(email, hash, account.RoleUser)
+	acc, err := account.NewAccount(email, &hash, account.RoleUser) // Pass pointer
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 		return "", "", time.Time{}, auth.ErrInvalidCredentials
 	}
 
-	if acc.PasswordHash() == "" {
+	if acc.PasswordHash() == nil {
 		return "", "", time.Time{}, auth.ErrInvalidCredentials
 	}
 
@@ -119,7 +119,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 		return "", "", time.Time{}, account.ErrAccountBanned
 	}
 
-	match, err := s.hasher.Compare(acc.PasswordHash(), password)
+	match, err := s.hasher.Compare(*acc.PasswordHash(), password)
 	if err != nil || !match {
 		attempts, _ := s.attemptStore.IncrementFailedAttempt(ctx, email)
 		if attempts >= s.maxAttempts {
@@ -214,7 +214,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 		return err
 	}
 
-	acc.UpdatePasswordHash(newHash)
+	acc.UpdatePasswordHash(&newHash)
 	if err := s.accountRepo.Update(ctx, acc); err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, accID account.AccountI
 		return err
 	}
 
-	match, err := s.hasher.Compare(acc.PasswordHash(), currentPassword)
+	match, err := s.hasher.Compare(*acc.PasswordHash(), currentPassword)
 	if err != nil || !match {
 		return auth.ErrInvalidCredentials
 	}
@@ -238,7 +238,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, accID account.AccountI
 		return err
 	}
 
-	acc.UpdatePasswordHash(newHash)
+	acc.UpdatePasswordHash(&newHash)
 	if err := s.accountRepo.Update(ctx, acc); err != nil {
 		return err
 	}

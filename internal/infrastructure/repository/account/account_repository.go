@@ -13,7 +13,7 @@ import (
 type AccountModel struct {
 	ID           uuid.UUID `gorm:"primaryKey"`
 	Email        string    `gorm:"uniqueIndex"`
-	PasswordHash string
+	PasswordHash *string   `gorm:"column:password_hash"`
 	Role         string
 	Status       string
 	CreatedAt    time.Time

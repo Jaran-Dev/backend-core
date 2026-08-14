@@ -91,7 +91,7 @@ func (h *OAuthHandler) Link(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	accID := accIDVal.(domainAccount.AccountID) // Note: Adjust type import based on your context setup
+	accID := accIDVal.(domainAccount.AccountID)
 
 	if err := h.svc.LinkAccount(c.Request.Context(), accID, provider, code, state); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
