@@ -24,6 +24,8 @@ func NewRedisSessionStore(client *redis.Client) *RedisSessionStore {
 	return &RedisSessionStore{client: client}
 }
 
+// TODO #7 Move HashToken and GenerateOpaqueToken functions to a shared utility package
+
 func HashToken(raw string) string {
 	h := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(h[:])
