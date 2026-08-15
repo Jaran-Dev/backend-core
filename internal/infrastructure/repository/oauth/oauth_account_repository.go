@@ -14,9 +14,9 @@ import (
 
 type OAuthAccountModel struct {
 	ID             uuid.UUID `gorm:"primaryKey"`
-	AccountID      uuid.UUID `gorm:"uniqueIndex:idx_provider_user_id,priority:1"`
-	Provider       string    `gorm:"uniqueIndex:idx_provider_user_id,priority:2"`
-	ProviderUserID string    `gorm:"uniqueIndex:idx_provider_user_id,priority:3"`
+	AccountID      uuid.UUID
+	Provider       string `gorm:"uniqueIndex:idx_provider_user_id,priority:1"`
+	ProviderUserID string `gorm:"uniqueIndex:idx_provider_user_id,priority:2"`
 	EmailSnapshot  string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
