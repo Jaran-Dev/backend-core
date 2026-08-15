@@ -37,6 +37,20 @@ func (em *ErrorMiddleware) RegisterMapper(m DomainErrorMapper) {
 	em.mappers = append(em.mappers, m)
 }
 
+type HTTPError struct {
+	Status  int
+	Code    string
+	Message string
+}
+
+func (e *HTTPError) Error() string {
+	return e.Message
+}
+
+func NewHTTPError(status int, code, message string) *HTTPError {
+	return &HTTPError{Status: status, Code: code, Message: message}
+}
+
 func (em *ErrorMiddleware) Handler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
@@ -47,14 +61,24 @@ func (em *ErrorMiddleware) Handler() gin.HandlerFunc {
 
 		err := c.Errors.Last().Err
 
-		// 1. Try to map it using registered domain mappers (Course, Module, etc.)
+		// 1. Check for generic HTTP errors (like bad UUIDs in URLs)
+		var httpErr *HTTPError
+		if errors.As(err, &httpErr) {
+			c.JSON(httpErr.Status, APIErrorResponse{
+				Code:    httpErr.Code,
+				Message: httpErr.Message,
+			})
+			return
+		}
+
+		// 2. Try to map it using registered domain mappers (Course, Module, etc.)
 		for _, mapper := range em.mappers {
 			if mapper.MapError(c, err) {
 				return // A domain mapper handled it and wrote the JSON response
 			}
 		}
 
-		// 2. If no domain mapper matched, check if it's a standard Gin validation error
+		// 3. If no domain mapper matched, check if it's a standard Gin validation error
 		var valErrs validator.ValidationErrors
 		if errors.As(err, &valErrs) {
 			details := make([]APIErrorDetail, len(valErrs))
@@ -73,7 +97,7 @@ func (em *ErrorMiddleware) Handler() gin.HandlerFunc {
 			return
 		}
 
-		// 3. The Catch-All: Unknown internal server error
+		// 4. The Catch-All: Unknown internal server error
 		slog.Error("Unhandled internal error", "error", err.Error(), "path", c.Request.URL.Path)
 		c.JSON(http.StatusInternalServerError, APIErrorResponse{
 			Code:    "INTERNAL_ERROR",
