@@ -6,15 +6,17 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Jaran-Dev/backend-core/internal/domain/account"
+	domainAdmin "github.com/Jaran-Dev/backend-core/internal/domain/admin"
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
+	rootHttp "github.com/Jaran-Dev/backend-core/internal/interfaces/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type AdminCourseUseCase interface {
-	Create(ctx context.Context, slugStr, coverURL string, adminID account.AccountID) (*domainCourse.Course, error)
+	Create(ctx context.Context, slugStr, coverURL string, adminID domainAdmin.AdminID) (*domainCourse.Course, error)
+	UpdateMetadata(ctx context.Context, courseID domainCourse.CourseID, slug *string, coverURL *string) (*domainCourse.Course, error)
 }
 
 type AdminCourseHandler struct {
@@ -29,10 +31,7 @@ func (h *AdminCourseHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	courses := rg.Group("/courses")
 	{
 		courses.POST("", h.Create)
-		// Future routes:
-		// courses.GET("", h.List)
-		// courses.PATCH("/:id", h.Update)
-		// courses.POST("/:id/translations", h.UpsertTranslation)
+		courses.PATCH("/:id", h.Update)
 	}
 }
 
@@ -57,25 +56,56 @@ func (h *AdminCourseHandler) Create(c *gin.Context) {
 	}
 
 	response := mapToCourseResponse(course)
-
 	c.JSON(http.StatusCreated, response)
 }
 
-func getAdminIDFromContext(c *gin.Context) (account.AccountID, error) {
-	idVal, exists := c.Get("user_id")
-	if !exists {
-		return account.AccountID(uuid.Nil), errors.New("UNAUTHORIZED: missing user_id in context")
+// Update handles PATCH /api/v1/admin/courses/:id
+func (h *AdminCourseHandler) Update(c *gin.Context) {
+	rawID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.Error(rootHttp.NewHTTPError(http.StatusBadRequest, "VALIDATION_ERROR", "Invalid course ID format: must be a valid UUID."))
+		return
 	}
 
+	courseID := domainCourse.CourseID(rawID)
+
+	var req UpdateCourseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(err)
+		return
+	}
+
+	updatedCourse, err := h.uc.UpdateMetadata(c.Request.Context(), courseID, req.Slug, req.CoverURL)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	response := mapToCourseResponse(updatedCourse)
+	c.JSON(http.StatusOK, response)
+}
+
+func getAdminIDFromContext(c *gin.Context) (domainAdmin.AdminID, error) {
+	idVal, exists := c.Get("user_id")
+	if !exists {
+		return domainAdmin.AdminID(uuid.Nil), errors.New("UNAUTHORIZED: missing user_id in context")
+	}
+
+	var rawUUID uuid.UUID
 	switch v := idVal.(type) {
 	case uuid.UUID:
-		return account.AccountID(v), nil
+		rawUUID = v
 	case string:
-		id, err := uuid.Parse(v)
-		return account.AccountID(id), err
+		parsed, err := uuid.Parse(v)
+		if err != nil {
+			return domainAdmin.AdminID(uuid.Nil), errors.New("UNAUTHORIZED: invalid user_id format in context")
+		}
+		rawUUID = parsed
 	default:
-		return account.AccountID(uuid.Nil), errors.New("UNAUTHORIZED: invalid user_id type in context")
+		return domainAdmin.AdminID(uuid.Nil), errors.New("UNAUTHORIZED: invalid user_id type in context")
 	}
+
+	return domainAdmin.AdminID(rawUUID), nil
 }
 
 func mapToCourseResponse(c *domainCourse.Course) CourseResponse {
@@ -96,8 +126,8 @@ func mapToCourseResponse(c *domainCourse.Course) CourseResponse {
 		Slug:         c.Slug().String(),
 		Status:       string(c.Status()),
 		CoverURL:     c.CoverURL(),
-		CreatedBy:    uuid.UUID(c.CreatedBy()),
-		CreatedAt:    c.CreatedAt().Format(time.RFC3339), // Standardized ISO 8601 format for JS
+		CreatedBy:    uuid.UUID(c.CreatedBy()), // Translate back to raw UUID for JSON serialization
+		CreatedAt:    c.CreatedAt().Format(time.RFC3339),
 		UpdatedAt:    c.UpdatedAt().Format(time.RFC3339),
 		Translations: transResp,
 	}
