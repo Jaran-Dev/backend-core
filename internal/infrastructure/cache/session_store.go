@@ -21,123 +21,173 @@ func NewRedisSessionStore(client *redis.Client) *RedisSessionStore {
 	return &RedisSessionStore{client: client}
 }
 
-func (s *RedisSessionStore) SaveSession(ctx context.Context, hashedToken string, accID account.AccountID, role auth.Role, familyID string, expiresAt time.Time) error {
-	key := fmt.Sprintf("session:%s", hashedToken)
+func (s *RedisSessionStore) SaveSession(ctx context.Context, sessionID uuid.UUID, hashedToken string, accID account.AccountID, role auth.Role, expiresAt time.Time, meta auth.SessionMetadata) error {
 	ttl := time.Until(expiresAt)
 	if ttl <= 0 {
 		return auth.ErrTokenExpired
 	}
 
-	pipe := s.client.TxPipeline()
-	pipe.HSet(ctx, key, "account_id", accID.String(), "role", string(role), "family_id", familyID, "used", "0", "expires_at", expiresAt.Unix())
-	pipe.Expire(ctx, key, ttl)
-	pipe.SAdd(ctx, fmt.Sprintf("family:%s", familyID), hashedToken)
+	sessionKey := fmt.Sprintf("session:%s", sessionID.String())
+	tokenIndexKey := fmt.Sprintf("token_index:%s", hashedToken)
+	accountSessionsKey := fmt.Sprintf("account_sessions:%s", accID.String())
 
-	pipe.SAdd(ctx, fmt.Sprintf("account_sessions:%s", accID.String()), hashedToken)
-	pipe.Expire(ctx, fmt.Sprintf("account_sessions:%s", accID.String()), ttl)
+	now := time.Now().Unix()
+
+	pipe := s.client.TxPipeline()
+	pipe.HSet(ctx, sessionKey,
+		"token_hash", hashedToken,
+		"account_id", accID.String(),
+		"role", string(role),
+		"used", "0",
+		"expires_at", expiresAt.Unix(),
+		"created_at", now,
+		"last_active_at", now,
+		"ip_address", meta.IPAddress,
+		"user_agent", meta.UserAgent,
+		"device_type", meta.DeviceType,
+	)
+	pipe.Expire(ctx, sessionKey, ttl)
+
+	pipe.Set(ctx, tokenIndexKey, sessionID.String(), ttl)
+
+	pipe.ZAdd(ctx, accountSessionsKey, redis.Z{
+		Score:  float64(expiresAt.Unix()),
+		Member: sessionID.String(),
+	})
+	pipe.Expire(ctx, accountSessionsKey, ttl)
 
 	_, err := pipe.Exec(ctx)
 	return err
 }
 
-func (s *RedisSessionStore) GetSession(ctx context.Context, hashedToken string) (account.AccountID, auth.Role, string, bool, time.Time, error) {
-	key := fmt.Sprintf("session:%s", hashedToken)
-	res, err := s.client.HGetAll(ctx, key).Result()
-	if err == redis.Nil || len(res) == 0 {
-		return account.AccountID(uuid.Nil), "", "", false, time.Time{}, auth.ErrTokenNotFound
+func (s *RedisSessionStore) GetSession(ctx context.Context, hashedToken string) (uuid.UUID, account.AccountID, auth.Role, bool, time.Time, error) {
+	tokenIndexKey := fmt.Sprintf("token_index:%s", hashedToken)
+	sessionIDStr, err := s.client.Get(ctx, tokenIndexKey).Result()
+	if err == redis.Nil {
+		return uuid.Nil, account.AccountID(uuid.Nil), "", false, time.Time{}, auth.ErrTokenNotFound
 	}
 	if err != nil {
-		return account.AccountID(uuid.Nil), "", "", false, time.Time{}, err
+		return uuid.Nil, account.AccountID(uuid.Nil), "", false, time.Time{}, err
+	}
+
+	sessionID, err := uuid.Parse(sessionIDStr)
+	if err != nil {
+		return uuid.Nil, account.AccountID(uuid.Nil), "", false, time.Time{}, auth.ErrTokenNotFound
+	}
+
+	sessionKey := fmt.Sprintf("session:%s", sessionIDStr)
+	res, err := s.client.HGetAll(ctx, sessionKey).Result()
+	if err != nil || len(res) == 0 {
+		return uuid.Nil, account.AccountID(uuid.Nil), "", false, time.Time{}, auth.ErrTokenNotFound
 	}
 
 	uid, _ := uuid.Parse(res["account_id"])
 	role := auth.Role(res["role"])
-	familyID := res["family_id"]
 	used := res["used"] == "1"
 	expUnix, _ := strconv.ParseInt(res["expires_at"], 10, 64)
 	exp := time.Unix(expUnix, 0)
 
-	return account.AccountID(uid), role, familyID, used, exp, nil
+	return sessionID, account.AccountID(uid), role, used, exp, nil
 }
 
-// AtomicRotate uses a Lua script to prevent TOCTOU races during refresh token rotation.
 const rotateScript = `
-local old_key = 'session:' .. KEYS[1]
-local new_key = 'session:' .. ARGV[1]
+local old_hash = KEYS[1]
+local new_hash = ARGV[1]
 local now = tonumber(ARGV[2])
 local new_exp = tonumber(ARGV[3])
+local ip = ARGV[4]
+local user_agent = ARGV[5]
+local device_type = ARGV[6]
 
-if redis.call('EXISTS', old_key) == 0 then return {err='not_found'} end
+local old_session_id = redis.call('GET', 'token_index:' .. old_hash)
+if not old_session_id then return {err='not_found'} end
 
-local account_id = redis.call('HGET', old_key, 'account_id')
-local role = redis.call('HGET', old_key, 'role')
-local family_id = redis.call('HGET', old_key, 'family_id')
-local used = redis.call('HGET', old_key, 'used')
-local exp = tonumber(redis.call('HGET', old_key, 'expires_at'))
+local session_key = 'session:' .. old_session_id
+local account_id = redis.call('HGET', session_key, 'account_id')
+local role = redis.call('HGET', session_key, 'role')
+local used = redis.call('HGET', session_key, 'used')
+local exp = tonumber(redis.call('HGET', session_key, 'expires_at'))
 
 if used == '1' then
-  local fam_key = 'family:' .. family_id
-  local members = redis.call('SMEMBERS', fam_key)
-  for _, m in ipairs(members) do redis.call('DEL', 'session:' .. m) end
-  redis.call('DEL', fam_key)
+  redis.call('DEL', session_key)
+  redis.call('DEL', 'token_index:' .. old_hash)
+  redis.call('ZREM', 'account_sessions:' .. account_id, old_session_id)
   return {err='reuse'}
 end
 
 if exp < now then return {err='expired'} end
 
-redis.call('HSET', old_key, 'used', '1')
+local ttl = new_exp - now
+if ttl <= 0 then return {err='expired'} end
 
-redis.call('HSET', new_key, 'account_id', account_id, 'role', role, 'family_id', family_id, 'used', '0', 'expires_at', new_exp)
-redis.call('EXPIREAT', new_key, new_exp)
-redis.call('SADD', 'family:' .. family_id, ARGV[1])
+redis.call('HSET', session_key, 'used', '1')
+redis.call('DEL', 'token_index:' .. old_hash)
 
-return {account_id, role, family_id}
+redis.call('HSET', session_key, 
+    'token_hash', new_hash, 
+    'expires_at', new_exp, 
+    'last_active_at', now,
+    'ip_address', ip,
+    'user_agent', user_agent,
+    'device_type', device_type)
+
+redis.call('SET', 'token_index:' .. new_hash, old_session_id, 'EX', ttl)
+redis.call('EXPIRE', session_key, ttl)
+
+redis.call('ZADD', 'account_sessions:' .. account_id, new_exp, old_session_id)
+
+return {old_session_id, account_id, role}
 `
 
-func (s *RedisSessionStore) AtomicRotate(ctx context.Context, hashedOldToken, hashedNewToken string, newExpiresAt time.Time) (account.AccountID, auth.Role, error) {
+func (s *RedisSessionStore) AtomicRotate(ctx context.Context, hashedOldToken, hashedNewToken string, newExpiresAt time.Time, meta auth.SessionMetadata) (uuid.UUID, account.AccountID, auth.Role, error) {
 	now := time.Now().Unix()
 	newExp := newExpiresAt.Unix()
 
-	res, err := s.client.Eval(ctx, rotateScript, []string{hashedOldToken}, hashedNewToken, now, newExp).Result()
+	res, err := s.client.Eval(ctx, rotateScript, []string{hashedOldToken},
+		hashedNewToken, now, newExp, meta.IPAddress, meta.UserAgent, meta.DeviceType,
+	).Result()
+
 	if err != nil {
 		if err.Error() == "not_found" {
-			return account.AccountID(uuid.Nil), "", auth.ErrTokenNotFound
+			return uuid.Nil, account.AccountID(uuid.Nil), "", auth.ErrTokenNotFound
 		}
 		if err.Error() == "reuse" {
-			return account.AccountID(uuid.Nil), "", auth.ErrRefreshTokenReused
+			return uuid.Nil, account.AccountID(uuid.Nil), "", auth.ErrRefreshTokenReused
 		}
 		if err.Error() == "expired" {
-			return account.AccountID(uuid.Nil), "", auth.ErrTokenExpired
+			return uuid.Nil, account.AccountID(uuid.Nil), "", auth.ErrTokenExpired
 		}
-		return account.AccountID(uuid.Nil), "", err
+		return uuid.Nil, account.AccountID(uuid.Nil), "", err
 	}
 
 	vals := res.([]interface{})
-	uid, _ := uuid.Parse(vals[0].(string))
-	role := auth.Role(vals[1].(string))
-	return account.AccountID(uid), role, nil
+	sessionID, _ := uuid.Parse(vals[0].(string))
+	uid, _ := uuid.Parse(vals[1].(string))
+	role := auth.Role(vals[2].(string))
+
+	return sessionID, account.AccountID(uid), role, nil
 }
 
-func (s *RedisSessionStore) RevokeFamily(ctx context.Context, familyID string) error {
-	famKey := fmt.Sprintf("family:%s", familyID)
-	members, err := s.client.SMembers(ctx, famKey).Result()
-	if err != nil {
-		return err
+func (s *RedisSessionStore) RevokeSessionByID(ctx context.Context, accID account.AccountID, sessionID uuid.UUID) error {
+	sessionKey := fmt.Sprintf("session:%s", sessionID.String())
+	accountSessionsKey := fmt.Sprintf("account_sessions:%s", accID.String())
+
+	pipe := s.client.TxPipeline()
+
+	tokenHash, err := s.client.HGet(ctx, sessionKey, "token_hash").Result()
+	if err == nil {
+		pipe.Del(ctx, fmt.Sprintf("token_index:%s", tokenHash))
 	}
-	if len(members) == 0 {
-		return nil
-	}
-	keys := make([]string, len(members))
-	for i, m := range members {
-		keys[i] = fmt.Sprintf("session:%s", m)
-	}
-	keys = append(keys, famKey)
-	return s.client.Del(ctx, keys...).Err()
+	pipe.Del(ctx, sessionKey)
+	pipe.ZRem(ctx, accountSessionsKey, sessionID.String())
+
+	_, err = pipe.Exec(ctx)
+	return err
 }
 
 func (s *RedisSessionStore) RevokeAllByAccountID(ctx context.Context, accID account.AccountID) error {
-	sessionsKey := fmt.Sprintf("account_sessions:%s", accID.String())
-	members, err := s.client.SMembers(ctx, sessionsKey).Result()
+	accountSessionsKey := fmt.Sprintf("account_sessions:%s", accID.String())
+	members, err := s.client.ZRange(ctx, accountSessionsKey, 0, -1).Result()
 	if err != nil {
 		return err
 	}
@@ -145,12 +195,79 @@ func (s *RedisSessionStore) RevokeAllByAccountID(ctx context.Context, accID acco
 		return nil
 	}
 
-	keys := make([]string, len(members))
-	for i, m := range members {
-		keys[i] = fmt.Sprintf("session:%s", m)
+	pipe := s.client.TxPipeline()
+	for _, sessionID := range members {
+		sessionKey := fmt.Sprintf("session:%s", sessionID)
+		tokenHash, err := s.client.HGet(ctx, sessionKey, "token_hash").Result()
+		if err == nil {
+			pipe.Del(ctx, fmt.Sprintf("token_index:%s", tokenHash))
+		}
+		pipe.Del(ctx, sessionKey)
 	}
-	keys = append(keys, sessionsKey)
-	return s.client.Del(ctx, keys...).Err()
+	pipe.Del(ctx, accountSessionsKey)
+
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (s *RedisSessionStore) ListSessionsByAccountID(ctx context.Context, accID account.AccountID) ([]*auth.Session, error) {
+	accountSessionsKey := fmt.Sprintf("account_sessions:%s", accID.String())
+	now := float64(time.Now().Unix())
+
+	sessionIDs, err := s.client.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     accountSessionsKey,
+		Start:   fmt.Sprintf("%v", now),
+		Stop:    "+inf",
+		ByScore: true,
+	}).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(sessionIDs) == 0 {
+		return []*auth.Session{}, nil
+	}
+
+	pipe := s.client.Pipeline()
+	cmds := make([]*redis.MapStringStringCmd, len(sessionIDs))
+	for i, id := range sessionIDs {
+		cmds[i] = pipe.HGetAll(ctx, fmt.Sprintf("session:%s", id))
+	}
+
+	_, err = pipe.Exec(ctx)
+	if err != nil && err != redis.Nil {
+		return nil, err
+	}
+
+	var sessions []*auth.Session
+	for i, cmd := range cmds {
+		res, err := cmd.Result()
+		if err != nil || len(res) == 0 {
+			continue
+		}
+
+		sessionID, _ := uuid.Parse(sessionIDs[i])
+		uid, _ := uuid.Parse(res["account_id"])
+		expUnix, _ := strconv.ParseInt(res["expires_at"], 10, 64)
+		lastActiveUnix, _ := strconv.ParseInt(res["last_active_at"], 10, 64)
+		createdUnix, _ := strconv.ParseInt(res["created_at"], 10, 64)
+
+		sessions = append(sessions, &auth.Session{
+			ID:        sessionID,
+			AccountID: account.AccountID(uid),
+			Role:      auth.Role(res["role"]),
+			ExpiresAt: time.Unix(expUnix, 0),
+			Metadata: auth.SessionMetadata{
+				IPAddress:  res["ip_address"],
+				UserAgent:  res["user_agent"],
+				DeviceType: res["device_type"],
+			},
+			LastActiveAt: time.Unix(lastActiveUnix, 0),
+			CreatedAt:    time.Unix(createdUnix, 0),
+		})
+	}
+
+	return sessions, nil
 }
 
 func (s *RedisSessionStore) SavePasswordResetToken(ctx context.Context, accID account.AccountID, hashedToken string, expiresAt time.Time) error {
