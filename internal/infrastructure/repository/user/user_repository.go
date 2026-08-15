@@ -29,7 +29,7 @@ func (m UserModel) toDomain() *domainUser.User {
 	)
 }
 
-func userModelFromDomain(u *domainUser.User) UserModel {
+func fromDomain(u *domainUser.User) UserModel {
 	return UserModel{
 		AccountID:   uuid.UUID(u.AccountID()),
 		DisplayName: u.DisplayName(),
@@ -48,8 +48,8 @@ func NewRepository(db *gorm.DB) domainUser.Repository {
 }
 
 func (r *pgRepository) CreateWithAccount(ctx context.Context, acc *domainAccount.Account, u *domainUser.User) error {
-	accModel := repoAccount.AccountModelFromDomain(acc)
-	userModel := userModelFromDomain(u)
+	accModel := repoAccount.FromDomain(acc)
+	userModel := fromDomain(u)
 
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&accModel).Error; err != nil {

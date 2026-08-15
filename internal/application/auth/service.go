@@ -8,8 +8,7 @@ import (
 	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	"github.com/Jaran-Dev/backend-core/internal/domain/auth"
 	"github.com/Jaran-Dev/backend-core/internal/domain/user"
-	"github.com/Jaran-Dev/backend-core/internal/infrastructure/cache"
-
+	tokenUtil "github.com/Jaran-Dev/backend-core/internal/pkg/token"
 	"github.com/google/uuid"
 )
 
@@ -18,7 +17,7 @@ type AuthService struct {
 	userRepo      user.Repository
 	hasher        auth.Hasher
 	tokenSvc      auth.TokenService
-	store         cache.RedisSessionStore
+	store         auth.SessionStore
 	emailSvc      auth.EmailService
 	attemptStore  auth.LoginAttemptStore
 	verifyTTL     time.Duration
@@ -32,7 +31,7 @@ func NewAuthService(
 	ur user.Repository,
 	h auth.Hasher,
 	ts auth.TokenService,
-	store cache.RedisSessionStore,
+	store auth.SessionStore,
 	emailSvc auth.EmailService,
 	attemptStore auth.LoginAttemptStore,
 	verifyTTL time.Duration,
@@ -68,7 +67,7 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 		return nil, err
 	}
 
-	acc, err := account.NewAccount(email, hash, account.RoleUser)
+	acc, err := account.NewAccount(email, &hash, account.RoleUser) // Pass pointer
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +88,52 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 	}
 
 	return u, nil
+}
+
+func (s *AuthService) Login(ctx context.Context, email, password string) (string, string, time.Time, error) {
+	acc, err := s.accountRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return "", "", time.Time{}, auth.ErrInvalidCredentials
+	}
+
+	if acc.PasswordHash() == nil {
+		return "", "", time.Time{}, auth.ErrInvalidCredentials
+	}
+
+	if acc.Status() == account.StatusLocked {
+		isLocked, err := s.attemptStore.IsAccountLocked(ctx, acc.ID())
+		if err != nil {
+			return "", "", time.Time{}, err
+		}
+		if isLocked {
+			return "", "", time.Time{}, account.ErrAccountLocked
+		}
+		acc.Unlock()
+		if err := s.accountRepo.Update(ctx, acc); err != nil {
+			return "", "", time.Time{}, err
+		}
+	}
+
+	if acc.Status() == account.StatusBanned {
+		return "", "", time.Time{}, account.ErrAccountBanned
+	}
+
+	match, err := s.hasher.Compare(*acc.PasswordHash(), password)
+	if err != nil || !match {
+		attempts, _ := s.attemptStore.IncrementFailedAttempt(ctx, email)
+		if attempts >= s.maxAttempts {
+			acc.Lock()
+			_ = s.accountRepo.Update(ctx, acc)
+			_ = s.attemptStore.LockAccount(ctx, acc.ID(), s.attemptWindow)
+			return "", "", time.Time{}, account.ErrAccountLocked
+		}
+		return "", "", time.Time{}, auth.ErrInvalidCredentials
+	}
+
+	_ = s.attemptStore.ResetFailedAttempts(ctx, email)
+
+	authRole := auth.Role(acc.Role())
+	return s.issueTokens(ctx, acc.ID(), authRole)
 }
 
 func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
@@ -134,11 +179,11 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 		return nil
 	}
 
-	rawToken, err := cache.GenerateOpaqueToken()
+	rawToken, err := tokenUtil.GenerateOpaqueToken()
 	if err != nil {
 		return err
 	}
-	hashedToken := cache.HashToken(rawToken)
+	hashedToken := tokenUtil.HashToken(rawToken)
 	expiresAt := time.Now().Add(s.verifyTTL)
 
 	if err := s.store.SavePasswordResetToken(ctx, acc.ID(), hashedToken, expiresAt); err != nil {
@@ -148,8 +193,8 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 	return s.emailSvc.SendPasswordResetEmail(email, rawToken)
 }
 
-func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword string) error {
-	hashedToken := cache.HashToken(token)
+func (s *AuthService) ResetPassword(ctx context.Context, rawToken, newPassword string) error {
+	hashedToken := tokenUtil.HashToken(rawToken)
 
 	accID, err := s.store.GetAccountIDByPasswordResetToken(ctx, hashedToken)
 	if err != nil {
@@ -168,7 +213,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 		return err
 	}
 
-	acc.UpdatePasswordHash(newHash)
+	acc.UpdatePasswordHash(&newHash)
 	if err := s.accountRepo.Update(ctx, acc); err != nil {
 		return err
 	}
@@ -182,7 +227,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, accID account.AccountI
 		return err
 	}
 
-	match, err := s.hasher.Compare(acc.PasswordHash(), currentPassword)
+	match, err := s.hasher.Compare(*acc.PasswordHash(), currentPassword)
 	if err != nil || !match {
 		return auth.ErrInvalidCredentials
 	}
@@ -192,7 +237,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, accID account.AccountI
 		return err
 	}
 
-	acc.UpdatePasswordHash(newHash)
+	acc.UpdatePasswordHash(&newHash)
 	if err := s.accountRepo.Update(ctx, acc); err != nil {
 		return err
 	}
@@ -200,56 +245,14 @@ func (s *AuthService) ChangePassword(ctx context.Context, accID account.AccountI
 	return s.store.RevokeAllByAccountID(ctx, acc.ID())
 }
 
-func (s *AuthService) Login(ctx context.Context, email, password string) (string, string, time.Time, error) {
-	acc, err := s.accountRepo.GetByEmail(ctx, email)
-	if err != nil {
-		return "", "", time.Time{}, auth.ErrInvalidCredentials
-	}
-
-	if acc.Status() == account.StatusLocked {
-		isLocked, err := s.attemptStore.IsAccountLocked(ctx, acc.ID())
-		if err != nil {
-			return "", "", time.Time{}, err
-		}
-		if isLocked {
-			return "", "", time.Time{}, account.ErrAccountLocked
-		}
-		acc.Unlock()
-		if err := s.accountRepo.Update(ctx, acc); err != nil {
-			return "", "", time.Time{}, err
-		}
-	}
-
-	if acc.Status() == account.StatusBanned {
-		return "", "", time.Time{}, account.ErrAccountBanned
-	}
-
-	match, err := s.hasher.Compare(acc.PasswordHash(), password)
-	if err != nil || !match {
-		attempts, _ := s.attemptStore.IncrementFailedAttempt(ctx, email)
-		if attempts >= s.maxAttempts {
-			acc.Lock()
-			_ = s.accountRepo.Update(ctx, acc)
-			_ = s.attemptStore.LockAccount(ctx, acc.ID(), s.attemptWindow)
-			return "", "", time.Time{}, account.ErrAccountLocked
-		}
-		return "", "", time.Time{}, auth.ErrInvalidCredentials
-	}
-
-	_ = s.attemptStore.ResetFailedAttempts(ctx, email)
-
-	authRole := auth.Role(acc.Role())
-	return s.issueTokens(ctx, acc.ID(), authRole)
-}
-
 func (s *AuthService) Refresh(ctx context.Context, rawRefreshToken string) (string, string, time.Time, error) {
-	hashedOld := cache.HashToken(rawRefreshToken)
+	hashedOld := tokenUtil.HashToken(rawRefreshToken)
 
-	newRawToken, err := cache.GenerateOpaqueToken()
+	newRawToken, err := tokenUtil.GenerateOpaqueToken()
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
-	hashedNew := cache.HashToken(newRawToken)
+	hashedNew := tokenUtil.HashToken(newRawToken)
 
 	newExp := time.Now().Add(s.refreshTTL)
 	accID, role, err := s.store.AtomicRotate(ctx, hashedOld, hashedNew, newExp)
@@ -266,7 +269,7 @@ func (s *AuthService) Refresh(ctx context.Context, rawRefreshToken string) (stri
 }
 
 func (s *AuthService) Logout(ctx context.Context, rawRefreshToken string) error {
-	hashed := cache.HashToken(rawRefreshToken)
+	hashed := tokenUtil.HashToken(rawRefreshToken)
 	_, _, familyID, _, _, err := s.store.GetSession(ctx, hashed)
 	if err != nil {
 		return err
@@ -280,11 +283,11 @@ func (s *AuthService) issueTokens(ctx context.Context, accountID account.Account
 		return "", "", time.Time{}, err
 	}
 
-	rawRefresh, err := cache.GenerateOpaqueToken()
+	rawRefresh, err := tokenUtil.GenerateOpaqueToken()
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
-	hashedRefresh := cache.HashToken(rawRefresh)
+	hashedRefresh := tokenUtil.HashToken(rawRefresh)
 	familyID := uuid.NewString()
 	expiresAt := time.Now().Add(s.refreshTTL)
 

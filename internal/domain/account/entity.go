@@ -30,14 +30,14 @@ const (
 type Account struct {
 	id           AccountID
 	email        string
-	passwordHash string
+	passwordHash *string
 	role         Role
 	status       Status
 	createdAt    time.Time
 	updatedAt    time.Time
 }
 
-func NewAccount(email, passwordHash string, role Role) (*Account, error) {
+func NewAccount(email string, passwordHash *string, role Role) (*Account, error) {
 	if role != RoleUser && role != RoleAdmin {
 		return nil, errors.New("invalid role")
 	}
@@ -52,13 +52,13 @@ func NewAccount(email, passwordHash string, role Role) (*Account, error) {
 	}, nil
 }
 
-func (a *Account) ID() AccountID        { return a.id }
-func (a *Account) Email() string        { return a.email }
-func (a *Account) PasswordHash() string { return a.passwordHash }
-func (a *Account) Role() Role           { return a.role }
-func (a *Account) Status() Status       { return a.status }
-func (a *Account) CreatedAt() time.Time { return a.createdAt }
-func (a *Account) UpdatedAt() time.Time { return a.updatedAt }
+func (a *Account) ID() AccountID         { return a.id }
+func (a *Account) Email() string         { return a.email }
+func (a *Account) PasswordHash() *string { return a.passwordHash }
+func (a *Account) Role() Role            { return a.role }
+func (a *Account) Status() Status        { return a.status }
+func (a *Account) CreatedAt() time.Time  { return a.createdAt }
+func (a *Account) UpdatedAt() time.Time  { return a.updatedAt }
 
 func (a *Account) Verify() {
 	if a.status == StatusPendingVerification {
@@ -77,12 +77,12 @@ func (a *Account) Unlock() {
 	a.updatedAt = time.Now()
 }
 
-func (a *Account) UpdatePasswordHash(newHash string) {
+func (a *Account) UpdatePasswordHash(newHash *string) {
 	a.passwordHash = newHash
 	a.updatedAt = time.Now()
 }
 
-func UnmarshalAccount(id uuid.UUID, email, passwordHash, roleStr, statusStr string, createdAt, updatedAt time.Time) (*Account, error) {
+func UnmarshalAccount(id uuid.UUID, email string, passwordHash *string, roleStr, statusStr string, createdAt, updatedAt time.Time) (*Account, error) {
 	role := Role(roleStr)
 	if role != RoleUser && role != RoleAdmin {
 		return nil, errors.New("invalid role in database")
