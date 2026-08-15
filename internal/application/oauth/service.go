@@ -74,7 +74,7 @@ func (s *OAuthService) InitiateLogin(ctx context.Context, providerName domainOau
 	return provider.AuthURL(state, codeChallenge), nil
 }
 
-func (s *OAuthService) HandleCallback(ctx context.Context, providerName domainOauth.Provider, code, state string) (*CallbackResult, error) {
+func (s *OAuthService) HandleCallback(ctx context.Context, providerName domainOauth.Provider, code, state string, meta domainAuth.SessionMetadata) (*CallbackResult, error) {
 	provider, ok := s.providers[providerName]
 	if !ok {
 		return nil, domainOauth.ErrOAuthProviderUnsupported
@@ -116,7 +116,7 @@ func (s *OAuthService) HandleCallback(ctx context.Context, providerName domainOa
 		}
 	}
 
-	access, refresh, exp, err := s.issueTokens(ctx, acc.ID(), domainAuth.Role(acc.Role()))
+	access, refresh, exp, err := s.issueTokens(ctx, acc.ID(), domainAuth.Role(acc.Role()), meta)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +259,7 @@ func (s *OAuthService) linkOAuthAccount(ctx context.Context, accID domainAccount
 	return err
 }
 
-func (s *OAuthService) issueTokens(ctx context.Context, accountID domainAccount.AccountID, role domainAuth.Role) (string, string, time.Time, error) {
+func (s *OAuthService) issueTokens(ctx context.Context, accountID domainAccount.AccountID, role domainAuth.Role, meta domainAuth.SessionMetadata) (string, string, time.Time, error) {
 	accessToken, _, err := s.tokenSvc.GenerateAccessToken(accountID, role)
 	if err != nil {
 		return "", "", time.Time{}, err
@@ -270,10 +270,11 @@ func (s *OAuthService) issueTokens(ctx context.Context, accountID domainAccount.
 		return "", "", time.Time{}, err
 	}
 	hashedRefresh := tokenUtil.HashToken(rawRefresh)
-	familyID := uuid.NewString()
+
+	sessionID := uuid.New()
 	expiresAt := time.Now().Add(s.refreshTTL)
 
-	if err := s.sessionStore.SaveSession(ctx, hashedRefresh, accountID, role, familyID, expiresAt); err != nil {
+	if err := s.sessionStore.SaveSession(ctx, sessionID, hashedRefresh, accountID, role, expiresAt, meta); err != nil {
 		return "", "", time.Time{}, err
 	}
 
