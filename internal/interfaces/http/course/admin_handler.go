@@ -17,6 +17,7 @@ import (
 type AdminCourseUseCase interface {
 	Create(ctx context.Context, slugStr, coverURL string, adminID domainAdmin.AdminID) (*domainCourse.Course, error)
 	UpdateMetadata(ctx context.Context, courseID domainCourse.CourseID, slug *string, coverURL *string) (*domainCourse.Course, error)
+	UpsertTranslation(ctx context.Context, courseID domainCourse.CourseID, locale domainCourse.Locale, title, description string) (*domainCourse.Course, error)
 }
 
 type AdminCourseHandler struct {
@@ -32,6 +33,7 @@ func (h *AdminCourseHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	{
 		courses.POST("", h.Create)
 		courses.PATCH("/:id", h.Update)
+		courses.POST("/:id/translations", h.UpsertTranslation)
 	}
 }
 
@@ -76,6 +78,32 @@ func (h *AdminCourseHandler) Update(c *gin.Context) {
 	}
 
 	updatedCourse, err := h.uc.UpdateMetadata(c.Request.Context(), courseID, req.Slug, req.CoverURL)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	response := mapToCourseResponse(updatedCourse)
+	c.JSON(http.StatusOK, response)
+}
+
+func (h *AdminCourseHandler) UpsertTranslation(c *gin.Context) {
+	rawID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.Error(rootHttp.NewHTTPError(http.StatusBadRequest, "VALIDATION_ERROR", "Invalid course ID format: must be a valid UUID."))
+		return
+	}
+	courseID := domainCourse.CourseID(rawID)
+
+	var req UpsertTranslationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(err)
+		return
+	}
+
+	locale := domainCourse.Locale(req.Locale)
+
+	updatedCourse, err := h.uc.UpsertTranslation(c.Request.Context(), courseID, locale, req.Title, req.Description)
 	if err != nil {
 		c.Error(err)
 		return
