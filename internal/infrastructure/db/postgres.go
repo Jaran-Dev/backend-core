@@ -11,10 +11,28 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func NewPostgres(ctx context.Context, dsn string) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
-	})
+type Config struct {
+	DSN             string
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+}
+
+func NewPostgres(ctx context.Context, cfg Config) (*gorm.DB, error) {
+	gormCfg := &gorm.Config{
+		PrepareStmt: true,
+		Logger: logger.New(
+			slog.NewLogLogger(slog.Default().Handler(), slog.LevelInfo),
+			logger.Config{
+				SlowThreshold:             200 * time.Millisecond,
+				LogLevel:                  logger.Warn,
+				IgnoreRecordNotFoundError: true, // We handle ErrRecordNotFound in our mappers
+				Colorful:                  false,
+			},
+		),
+	}
+
+	db, err := gorm.Open(postgres.Open(cfg.DSN), gormCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
@@ -24,10 +42,9 @@ func NewPostgres(ctx context.Context, dsn string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
 	}
 
-	// Pool settings
-	sqlDB.SetMaxOpenConns(25)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
 	if err := sqlDB.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("failed to ping db: %w", err)
