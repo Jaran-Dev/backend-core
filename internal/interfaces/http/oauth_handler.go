@@ -2,6 +2,8 @@ package http
 
 import (
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	appOauth "github.com/Jaran-Dev/backend-core/internal/application/oauth"
@@ -28,7 +30,7 @@ func (h *OAuthHandler) InitiateLogin(c *gin.Context) {
 
 	redirectURL := c.Query("redirect")
 	if redirectURL == "" {
-		redirectURL = "/" // Default redirect
+		redirectURL = "/"
 	}
 
 	authURL, err := h.svc.InitiateLogin(c.Request.Context(), provider, redirectURL)
@@ -55,20 +57,31 @@ func (h *OAuthHandler) Callback(c *gin.Context) {
 		return
 	}
 
-	access, refresh, exp, err := h.svc.HandleCallback(c.Request.Context(), provider, code, state)
+	result, err := h.svc.HandleCallback(c.Request.Context(), provider, code, state)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	h.setRefreshCookie(c, refresh, exp)
+	h.setRefreshCookie(c, result.RefreshToken, result.ExpiresAt)
 
-	// In a real SPA, you'd redirect to the frontend with the token in the URL fragment
-	// e.g., /auth/callback#access_token=...
-	c.JSON(http.StatusOK, gin.H{
-		"access_token": access,
-		"expires_in":   int(time.Until(exp).Seconds()),
-	})
+	fragment := url.Values{}
+	fragment.Set("access_token", result.AccessToken)
+	fragment.Set("token_type", "Bearer")
+	fragment.Set("expires_in", strconv.Itoa(int(time.Until(result.ExpiresAt).Seconds())))
+
+	redirectTo, parseErr := url.Parse(result.RedirectURL)
+	if parseErr != nil || redirectTo.String() == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid redirect url"})
+		return
+	}
+
+	if redirectTo.Fragment != "" {
+		redirectTo.Fragment += "&"
+	}
+	redirectTo.Fragment += fragment.Encode()
+
+	c.Redirect(http.StatusFound, redirectTo.String())
 }
 
 func (h *OAuthHandler) Link(c *gin.Context) {
@@ -131,8 +144,8 @@ func (h *OAuthHandler) setRefreshCookie(c *gin.Context, token string, expires ti
 		token,
 		int(time.Until(expires).Seconds()),
 		"/",
-		"",   // Empty domain -> host-only
-		true, // Secure (requires HTTPS in prod)
-		true, // HttpOnly
+		"",
+		true,
+		true,
 	)
 }
