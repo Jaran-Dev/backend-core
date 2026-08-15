@@ -67,6 +67,15 @@ type PublicCourseDetailDTO struct {
 	ResolvedLocale string    `json:"resolved_locale"` // e.g., "en" (if ckb was missing)
 }
 
+type CourseReadModel struct {
+	ID             uuid.UUID
+	Slug           string
+	CoverURL       string
+	Title          string
+	Description    string
+	ResolvedLocale string
+}
+
 // ==========================================
 // 3. STUDENT REQUEST DTOS (Query Parameters)
 // ==========================================
