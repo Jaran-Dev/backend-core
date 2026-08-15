@@ -39,3 +39,16 @@ func (t *CourseTranslation) UpdateTitle(title string) {
 func (t *CourseTranslation) UpdateDescription(description string) {
 	t.description = description
 }
+
+func UnmarshalCourseTranslation(courseID CourseID, locale Locale, title, description string) (CourseTranslation, error) {
+	if !locale.IsValid() {
+		return CourseTranslation{}, ErrInvalidLocale
+	}
+
+	return CourseTranslation{
+		courseID:    courseID,
+		locale:      locale,
+		title:       title,
+		description: description,
+	}, nil
+}

@@ -18,4 +18,6 @@ type Repository interface {
 	List(ctx context.Context, params QueryParams) ([]*Course, int64, error)
 	ExistsByID(ctx context.Context, id CourseID) (bool, error)
 	UpsertTranslation(ctx context.Context, courseID CourseID, locale Locale, title, description string) (*Course, error)
+	GetPublishedBySlugWithLocale(ctx context.Context, slug Slug, preferredLocale Locale) (*Course, Locale, error)
+	ListPublishedWithLocale(ctx context.Context, params QueryParams, preferredLocale Locale) ([]*Course, int64, error)
 }

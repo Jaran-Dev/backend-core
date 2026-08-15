@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Jaran-Dev/backend-core/internal/domain/admin"
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 
 	"github.com/google/uuid"
 )
@@ -14,7 +14,7 @@ type Course struct {
 	slug         Slug
 	status       CourseStatus
 	coverURL     string
-	createdBy    admin.AdminID
+	createdBy    account.AccountID
 	createdAt    time.Time
 	updatedAt    time.Time
 	version      int // Optimistic concurrency control
@@ -22,7 +22,7 @@ type Course struct {
 	events       []interface{} // Domain events for downstream processing
 }
 
-func NewCourse(slug Slug, coverURL string, creatorID admin.AdminID) *Course {
+func NewCourse(slug Slug, coverURL string, creatorID account.AccountID) *Course {
 	now := time.Now()
 	return &Course{
 		id:        CourseID(uuid.New()),
@@ -52,7 +52,7 @@ func (c *Course) CoverURL() string {
 	return c.coverURL
 }
 
-func (c *Course) CreatedBy() admin.AdminID {
+func (c *Course) CreatedBy() account.AccountID {
 	return c.createdBy
 }
 
@@ -161,7 +161,7 @@ func UnmarshalCourse(
 	slugStr string,
 	statusStr string,
 	coverURL string,
-	createdBy admin.AdminID,
+	createdBy account.AccountID,
 	createdAt time.Time,
 	updatedAt time.Time,
 	version int,
