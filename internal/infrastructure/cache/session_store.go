@@ -2,9 +2,6 @@ package cache
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -22,21 +19,6 @@ type RedisSessionStore struct {
 
 func NewRedisSessionStore(client *redis.Client) *RedisSessionStore {
 	return &RedisSessionStore{client: client}
-}
-
-// TODO #7 Move HashToken and GenerateOpaqueToken functions to a shared utility package
-
-func HashToken(raw string) string {
-	h := sha256.Sum256([]byte(raw))
-	return hex.EncodeToString(h[:])
-}
-
-func GenerateOpaqueToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
 }
 
 func (s *RedisSessionStore) SaveSession(ctx context.Context, hashedToken string, accID account.AccountID, role auth.Role, familyID string, expiresAt time.Time) error {

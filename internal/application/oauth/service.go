@@ -12,7 +12,7 @@ import (
 	domainAuth "github.com/Jaran-Dev/backend-core/internal/domain/auth"
 	domainOauth "github.com/Jaran-Dev/backend-core/internal/domain/oauth"
 	domainUser "github.com/Jaran-Dev/backend-core/internal/domain/user"
-	"github.com/Jaran-Dev/backend-core/internal/infrastructure/cache"
+	tokenUtil "github.com/Jaran-Dev/backend-core/internal/pkg/token"
 
 	"github.com/google/uuid"
 )
@@ -24,7 +24,7 @@ type OAuthService struct {
 	accountRepo  domainAccount.Repository
 	userRepo     domainUser.Repository
 	tokenSvc     domainAuth.TokenService
-	sessionStore cache.RedisSessionStore
+	sessionStore domainAuth.SessionStore
 	refreshTTL   time.Duration
 }
 
@@ -35,7 +35,7 @@ func NewOAuthService(
 	accountRepo domainAccount.Repository,
 	userRepo domainUser.Repository,
 	tokenSvc domainAuth.TokenService,
-	sessionStore cache.RedisSessionStore,
+	sessionStore domainAuth.SessionStore,
 	refreshTTL time.Duration,
 ) *OAuthService {
 	return &OAuthService{
@@ -180,7 +180,6 @@ func (s *OAuthService) UnlinkAccount(ctx context.Context, accID domainAccount.Ac
 		return err
 	}
 
-	// Domain rule: cannot unlink if no password and this is the last OAuth link
 	if acc.PasswordHash() == nil && len(links) == 1 {
 		return domainOauth.ErrCannotUnlinkLastMethod
 	}
@@ -194,11 +193,11 @@ func (s *OAuthService) issueTokens(ctx context.Context, accountID domainAccount.
 		return "", "", time.Time{}, err
 	}
 
-	rawRefresh, err := cache.GenerateOpaqueToken()
+	rawRefresh, err := tokenUtil.GenerateOpaqueToken()
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
-	hashedRefresh := cache.HashToken(rawRefresh)
+	hashedRefresh := tokenUtil.HashToken(rawRefresh)
 	familyID := uuid.NewString()
 	expiresAt := time.Now().Add(s.refreshTTL)
 
