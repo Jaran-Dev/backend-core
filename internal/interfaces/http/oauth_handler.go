@@ -8,6 +8,7 @@ import (
 
 	appOauth "github.com/Jaran-Dev/backend-core/internal/application/oauth"
 	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
+	domainAuth "github.com/Jaran-Dev/backend-core/internal/domain/auth"
 	domainOauth "github.com/Jaran-Dev/backend-core/internal/domain/oauth"
 	"github.com/gin-gonic/gin"
 )
@@ -57,7 +58,13 @@ func (h *OAuthHandler) Callback(c *gin.Context) {
 		return
 	}
 
-	result, err := h.svc.HandleCallback(c.Request.Context(), provider, code, state)
+	meta := domainAuth.SessionMetadata{
+		IPAddress:  c.ClientIP(),
+		UserAgent:  c.GetHeader("User-Agent"),
+		DeviceType: "Unknown",
+	}
+
+	result, err := h.svc.HandleCallback(c.Request.Context(), provider, code, state, meta)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
