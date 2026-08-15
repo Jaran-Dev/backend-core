@@ -16,4 +16,6 @@ type Repository interface {
 	Update(ctx context.Context, c *Course) error
 	Delete(ctx context.Context, id CourseID) error
 	List(ctx context.Context, params QueryParams) ([]*Course, int64, error)
+	ExistsByID(ctx context.Context, id CourseID) (bool, error)
+	UpsertTranslation(ctx context.Context, courseID CourseID, locale Locale, title, description string) (*Course, error)
 }
