@@ -78,6 +78,14 @@ func (s *AdminModuleService) Reorder(ctx context.Context, courseID domainCourse.
 	var updatedModules []*domainModule.Module
 
 	err := s.txManager.Do(ctx, func(txCtx context.Context) error {
+		courseExists, err := s.courseRepo.ExistsByID(txCtx, courseID)
+		if err != nil {
+			return fmt.Errorf("failed to verify course existence: %w", err)
+		}
+		if !courseExists {
+			return domainCourse.ErrCourseNotFound
+		}
+
 		dbModules, err := s.moduleRepo.ListByCourseID(txCtx, courseID)
 		if err != nil {
 			return err
@@ -97,7 +105,7 @@ func (s *AdminModuleService) Reorder(ctx context.Context, courseID domainCourse.
 
 			pos, err := domainModule.NewPosition(index)
 			if err != nil {
-				return err // Should never happen as index is >= 0
+				return err
 			}
 			requestedPositions[modID] = pos
 		}
