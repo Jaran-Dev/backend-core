@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	domainAdmin "github.com/Jaran-Dev/backend-core/internal/domain/admin"
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
 	rootHttp "github.com/Jaran-Dev/backend-core/internal/interfaces/http"
 
@@ -15,7 +15,7 @@ import (
 )
 
 type AdminCourseUseCase interface {
-	Create(ctx context.Context, slugStr, coverURL string, adminID domainAdmin.AdminID) (*domainCourse.Course, error)
+	Create(ctx context.Context, slugStr, coverURL string, adminID account.AccountID) (*domainCourse.Course, error)
 	UpdateMetadata(ctx context.Context, courseID domainCourse.CourseID, slug *string, coverURL *string) (*domainCourse.Course, error)
 	UpsertTranslation(ctx context.Context, courseID domainCourse.CourseID, locale domainCourse.Locale, title, description string) (*domainCourse.Course, error)
 	Publish(ctx context.Context, courseID domainCourse.CourseID) (*domainCourse.Course, error)
@@ -149,10 +149,10 @@ func (h *AdminCourseHandler) ChangeStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func getAdminIDFromContext(c *gin.Context) (domainAdmin.AdminID, error) {
+func getAdminIDFromContext(c *gin.Context) (account.AccountID, error) {
 	idVal, exists := c.Get("user_id")
 	if !exists {
-		return domainAdmin.AdminID(uuid.Nil), errors.New("UNAUTHORIZED: missing user_id in context")
+		return account.AccountID(uuid.Nil), errors.New("UNAUTHORIZED: missing user_id in context")
 	}
 
 	var rawUUID uuid.UUID
@@ -162,14 +162,14 @@ func getAdminIDFromContext(c *gin.Context) (domainAdmin.AdminID, error) {
 	case string:
 		parsed, err := uuid.Parse(v)
 		if err != nil {
-			return domainAdmin.AdminID(uuid.Nil), errors.New("UNAUTHORIZED: invalid user_id format in context")
+			return account.AccountID(uuid.Nil), errors.New("UNAUTHORIZED: invalid user_id format in context")
 		}
 		rawUUID = parsed
 	default:
-		return domainAdmin.AdminID(uuid.Nil), errors.New("UNAUTHORIZED: invalid user_id type in context")
+		return account.AccountID(uuid.Nil), errors.New("UNAUTHORIZED: invalid user_id type in context")
 	}
 
-	return domainAdmin.AdminID(rawUUID), nil
+	return account.AccountID(rawUUID), nil
 }
 
 func mapToCourseResponse(c *domainCourse.Course) CourseResponse {
