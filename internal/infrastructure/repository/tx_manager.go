@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"math/rand"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
@@ -36,11 +38,15 @@ func (tm *TransactionManager) Do(ctx context.Context, fn func(ctx context.Contex
 		if err == nil {
 			return nil
 		}
-
+		
 		lastErr = err
 
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "40001" {
+			backoff := time.Duration(10*(i+1)) * time.Millisecond
+			jitter := time.Duration(rand.Intn(10)) * time.Millisecond
+			time.Sleep(backoff + jitter)
+
 			slog.Warn("Transaction serialization failure, retrying...", "attempt", i+1)
 			continue
 		}
