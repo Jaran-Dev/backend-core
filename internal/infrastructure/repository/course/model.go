@@ -3,8 +3,8 @@ package course
 import (
 	"time"
 
-	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
 	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
+	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
 
 	"github.com/google/uuid"
 )
@@ -105,4 +105,45 @@ func toDomain(orm *CourseORM) (*domainCourse.Course, error) {
 		orm.Version,
 		translations,
 	)
+}
+
+type CourseFlatORM struct {
+	ID        uuid.UUID `gorm:"column:id"`
+	Slug      string    `gorm:"column:slug"`
+	Status    string    `gorm:"column:status"`
+	CoverURL  *string   `gorm:"column:cover_url"`
+	CreatedBy uuid.UUID `gorm:"column:created_by"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+	Version   int       `gorm:"column:version"`
+
+	// Flattened translation columns (aliased to avoid collision with c.id, c.slug, etc.)
+	TransLocale      *string `gorm:"column:trans_locale"`
+	TransTitle       *string `gorm:"column:trans_title"`
+	TransDescription *string `gorm:"column:trans_description"`
+}
+
+func flatToCourseORM(flat *CourseFlatORM) *CourseORM {
+	orm := &CourseORM{
+		ID:        flat.ID,
+		Slug:      flat.Slug,
+		Status:    flat.Status,
+		CoverURL:  flat.CoverURL,
+		CreatedBy: flat.CreatedBy,
+		CreatedAt: flat.CreatedAt,
+		UpdatedAt: flat.UpdatedAt,
+		Version:   flat.Version,
+	}
+
+	// If the lateral join found a translation, add it to the translations slice
+	if flat.TransLocale != nil && flat.TransTitle != nil {
+		orm.Translations = []CourseTranslationORM{{
+			CourseID:    flat.ID,
+			Locale:      *flat.TransLocale,
+			Title:       *flat.TransTitle,
+			Description: flat.TransDescription,
+		}}
+	}
+
+	return orm
 }

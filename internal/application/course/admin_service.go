@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	domainAdmin "github.com/Jaran-Dev/backend-core/internal/domain/admin"
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
 	domainModule "github.com/Jaran-Dev/backend-core/internal/domain/course/module"
 )
@@ -21,7 +21,7 @@ func NewAdminCourseService(cr domainCourse.Repository, mr domainModule.Repositor
 	}
 }
 
-func (s *AdminCourseService) Create(ctx context.Context, slugStr, coverURL string, adminID domainAdmin.AdminID) (*domainCourse.Course, error) {
+func (s *AdminCourseService) Create(ctx context.Context, slugStr, coverURL string, adminID account.AccountID) (*domainCourse.Course, error) {
 	slug, err := domainCourse.NewSlug(slugStr)
 	if err != nil {
 		return nil, err
