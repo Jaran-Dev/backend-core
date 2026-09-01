@@ -8,4 +8,3 @@ CREATE TABLE modules(
 
 CREATE INDEX idx_modules_course_id ON modules(course_id);
 
-`

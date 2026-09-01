@@ -5,45 +5,60 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Jaran-Dev/backend-core/internal/domain/admin"
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	"github.com/Jaran-Dev/backend-core/internal/domain/auth"
 	"github.com/Jaran-Dev/backend-core/internal/domain/user"
-	"github.com/Jaran-Dev/backend-core/internal/infrastructure/cache"
-
+	tokenUtil "github.com/Jaran-Dev/backend-core/internal/pkg/token"
 	"github.com/google/uuid"
 )
 
 type AuthService struct {
-	userRepo  user.UserRepository
-	adminRepo admin.AdminRepository
-	hasher    auth.Hasher
-	tokenSvc  auth.TokenService
-	store     cache.RedisSessionStore
-
-	refreshTTL time.Duration
+	accountRepo   account.Repository
+	userRepo      user.Repository
+	hasher        auth.Hasher
+	tokenSvc      auth.TokenService
+	store         auth.SessionStore
+	emailSvc      auth.EmailService
+	attemptStore  auth.LoginAttemptStore
+	verifyTTL     time.Duration
+	refreshTTL    time.Duration
+	attemptWindow time.Duration
+	maxAttempts   int
 }
 
-func NewAuthService(ur user.UserRepository, ar admin.AdminRepository, h auth.Hasher, ts auth.TokenService, store cache.RedisSessionStore, refreshTTL time.Duration) *AuthService {
+func NewAuthService(
+	ar account.Repository,
+	ur user.Repository,
+	h auth.Hasher,
+	ts auth.TokenService,
+	store auth.SessionStore,
+	emailSvc auth.EmailService,
+	attemptStore auth.LoginAttemptStore,
+	verifyTTL time.Duration,
+	refreshTTL time.Duration,
+	attemptWindow time.Duration,
+	maxAttempts int,
+) *AuthService {
 	return &AuthService{
-		userRepo:   ur,
-		adminRepo:  ar,
-		hasher:     h,
-		tokenSvc:   ts,
-		store:      store,
-		refreshTTL: refreshTTL,
+		accountRepo:   ar,
+		userRepo:      ur,
+		hasher:        h,
+		tokenSvc:      ts,
+		store:         store,
+		emailSvc:      emailSvc,
+		attemptStore:  attemptStore,
+		verifyTTL:     verifyTTL,
+		refreshTTL:    refreshTTL,
+		attemptWindow: attemptWindow,
+		maxAttempts:   maxAttempts,
 	}
 }
 
 func (s *AuthService) Register(ctx context.Context, email, password, displayName, uiLocale string) (*user.User, error) {
-	e, err := user.NewEmail(email)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = s.userRepo.GetByEmail(ctx, e)
+	_, err := s.accountRepo.GetByEmail(ctx, email)
 	if err == nil {
-		return nil, user.ErrUserAlreadyExists
-	} else if !errors.Is(err, user.ErrUserNotFound) {
+		return nil, account.ErrAccountAlreadyExists
+	} else if !errors.Is(err, account.ErrAccountNotFound) {
 		return nil, err
 	}
 
@@ -52,76 +67,91 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 		return nil, err
 	}
 
-	u := user.NewUser(e, hash, displayName, uiLocale)
-	if err := s.userRepo.Create(ctx, u); err != nil {
+	acc, err := account.NewAccount(email, &hash, account.RoleUser)
+	if err != nil {
 		return nil, err
 	}
+
+	u := user.NewUser(acc.ID(), displayName, uiLocale)
+
+	if err := s.userRepo.CreateWithAccount(ctx, acc, u); err != nil {
+		return nil, err
+	}
+
+	verificationToken, err := s.tokenSvc.GenerateEmailVerificationToken(acc.ID())
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.emailSvc.SendVerificationEmail(email, verificationToken); err != nil {
+		// Log error
+	}
+
 	return u, nil
 }
 
-func (s *AuthService) LoginUser(ctx context.Context, email, password string) (string, string, time.Time, error) {
-	e, err := user.NewEmail(email)
-	if err != nil {
-		return "", "", time.Time{}, err
-	}
-
-	u, err := s.userRepo.GetByEmail(ctx, e)
+func (s *AuthService) Login(ctx context.Context, email, password string, meta auth.SessionMetadata) (string, string, time.Time, error) {
+	acc, err := s.accountRepo.GetByEmail(ctx, email)
 	if err != nil {
 		return "", "", time.Time{}, auth.ErrInvalidCredentials
 	}
 
-	match, err := s.hasher.Compare(u.PasswordHash(), password)
+	if acc.PasswordHash() == nil {
+		return "", "", time.Time{}, auth.ErrInvalidCredentials
+	}
+
+	if acc.Status() == account.StatusLocked {
+		isLocked, err := s.attemptStore.IsAccountLocked(ctx, acc.ID())
+		if err != nil {
+			return "", "", time.Time{}, err
+		}
+		if isLocked {
+			return "", "", time.Time{}, account.ErrAccountLocked
+		}
+		acc.Unlock()
+		if err := s.accountRepo.Update(ctx, acc); err != nil {
+			return "", "", time.Time{}, err
+		}
+	}
+
+	if acc.Status() == account.StatusBanned {
+		return "", "", time.Time{}, account.ErrAccountBanned
+	}
+
+	match, err := s.hasher.Compare(*acc.PasswordHash(), password)
 	if err != nil || !match {
+		attempts, _ := s.attemptStore.IncrementFailedAttempt(ctx, email)
+		if attempts >= s.maxAttempts {
+			acc.Lock()
+			_ = s.accountRepo.Update(ctx, acc)
+			_ = s.attemptStore.LockAccount(ctx, acc.ID(), s.attemptWindow)
+			return "", "", time.Time{}, account.ErrAccountLocked
+		}
 		return "", "", time.Time{}, auth.ErrInvalidCredentials
 	}
 
-	// TODO
-	// return s.issueTokens(ctx, u.ID(), auth.RoleUser)
+	_ = s.attemptStore.ResetFailedAttempts(ctx, email)
 
-	// !!! PLACEHOLDER
-	return s.issueTokens(ctx, uuid.New(), auth.RoleUser)
+	authRole := auth.Role(acc.Role())
+	return s.issueTokens(ctx, acc.ID(), authRole, meta)
 }
 
-func (s *AuthService) LoginAdmin(ctx context.Context, email, password string) (string, string, time.Time, error) {
-	e, err := admin.NewEmail(email)
+func (s *AuthService) Refresh(ctx context.Context, rawRefreshToken string, meta auth.SessionMetadata) (string, string, time.Time, error) {
+	hashedOld := tokenUtil.HashToken(rawRefreshToken)
+
+	newRawToken, err := tokenUtil.GenerateOpaqueToken()
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
-
-	a, err := s.adminRepo.GetByEmail(ctx, e)
-	if err != nil {
-		return "", "", time.Time{}, auth.ErrInvalidCredentials
-	}
-
-	match, err := s.hasher.Compare(a.PasswordHash(), password)
-	if err != nil || !match {
-		return "", "", time.Time{}, auth.ErrInvalidCredentials
-	}
-
-	// TODO
-	// return s.issueTokens(ctx, a.ID(), auth.RoleAdmin)
-
-	// !!! PLACEHOLDER
-	return s.issueTokens(ctx, uuid.New(), auth.RoleAdmin)
-}
-
-func (s *AuthService) Refresh(ctx context.Context, rawRefreshToken string) (string, string, time.Time, error) {
-	hashedOld := cache.HashToken(rawRefreshToken)
-
-	// Generate new raw token upfront
-	newRawToken, err := cache.GenerateOpaqueToken()
-	if err != nil {
-		return "", "", time.Time{}, err
-	}
-	hashedNew := cache.HashToken(newRawToken)
+	hashedNew := tokenUtil.HashToken(newRawToken)
 
 	newExp := time.Now().Add(s.refreshTTL)
-	uid, role, err := s.store.AtomicRotate(ctx, hashedOld, hashedNew, newExp)
+	_, accID, role, err := s.store.AtomicRotate(ctx, hashedOld, hashedNew, newExp, meta)
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
 
-	accessToken, _, err := s.tokenSvc.GenerateAccessToken(uid, role)
+	accessToken, _, err := s.tokenSvc.GenerateAccessToken(accID, role)
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
@@ -130,31 +160,151 @@ func (s *AuthService) Refresh(ctx context.Context, rawRefreshToken string) (stri
 }
 
 func (s *AuthService) Logout(ctx context.Context, rawRefreshToken string) error {
-	hashed := cache.HashToken(rawRefreshToken)
-	_, _, familyID, _, _, err := s.store.GetSession(ctx, hashed)
+	hashed := tokenUtil.HashToken(rawRefreshToken)
+
+	sessionID, accID, _, _, _, err := s.store.GetSession(ctx, hashed)
 	if err != nil {
-		return err // silently fail or log
+		return err
 	}
-	return s.store.RevokeFamily(ctx, familyID)
+
+	return s.store.RevokeSessionByID(ctx, accID, sessionID)
 }
 
-func (s *AuthService) issueTokens(ctx context.Context, userID uuid.UUID, role auth.Role) (string, string, time.Time, error) {
-	accessToken, _, err := s.tokenSvc.GenerateAccessToken(userID, role)
+func (s *AuthService) ListSessions(ctx context.Context, accID account.AccountID) ([]*auth.Session, error) {
+	return s.store.ListSessionsByAccountID(ctx, accID)
+}
+
+func (s *AuthService) RevokeSession(ctx context.Context, accID account.AccountID, sessionID uuid.UUID) error {
+	return s.store.RevokeSessionByID(ctx, accID, sessionID)
+}
+
+func (s *AuthService) issueTokens(ctx context.Context, accountID account.AccountID, role auth.Role, meta auth.SessionMetadata) (string, string, time.Time, error) {
+	accessToken, _, err := s.tokenSvc.GenerateAccessToken(accountID, role)
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
 
-	rawRefresh, err := cache.GenerateOpaqueToken()
+	rawRefresh, err := tokenUtil.GenerateOpaqueToken()
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
-	hashedRefresh := cache.HashToken(rawRefresh)
-	familyID := uuid.NewString()
+	hashedRefresh := tokenUtil.HashToken(rawRefresh)
+
+	sessionID := uuid.New()
 	expiresAt := time.Now().Add(s.refreshTTL)
 
-	if err := s.store.SaveSession(ctx, hashedRefresh, userID, role, familyID, expiresAt); err != nil {
+	if err := s.store.SaveSession(ctx, sessionID, hashedRefresh, accountID, role, expiresAt, meta); err != nil {
 		return "", "", time.Time{}, err
 	}
 
 	return accessToken, rawRefresh, expiresAt, nil
+}
+
+func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
+	accID, err := s.tokenSvc.ValidateEmailVerificationToken(token)
+	if err != nil {
+		return auth.ErrInvalidCredentials
+	}
+
+	acc, err := s.accountRepo.GetByID(ctx, accID)
+	if err != nil {
+		return err
+	}
+
+	if acc.Status() == account.StatusActive {
+		return nil
+	}
+
+	acc.Verify()
+	return s.accountRepo.Update(ctx, acc)
+}
+
+func (s *AuthService) ResendVerification(ctx context.Context, email string) error {
+	acc, err := s.accountRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil
+	}
+
+	if acc.Status() == account.StatusActive {
+		return nil
+	}
+
+	verificationToken, err := s.tokenSvc.GenerateEmailVerificationToken(acc.ID())
+	if err != nil {
+		return err
+	}
+
+	return s.emailSvc.SendVerificationEmail(email, verificationToken)
+}
+
+func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
+	acc, err := s.accountRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil
+	}
+
+	rawToken, err := tokenUtil.GenerateOpaqueToken()
+	if err != nil {
+		return err
+	}
+	hashedToken := tokenUtil.HashToken(rawToken)
+	expiresAt := time.Now().Add(s.verifyTTL)
+
+	if err := s.store.SavePasswordResetToken(ctx, acc.ID(), hashedToken, expiresAt); err != nil {
+		return err
+	}
+
+	return s.emailSvc.SendPasswordResetEmail(email, rawToken)
+}
+
+func (s *AuthService) ResetPassword(ctx context.Context, rawToken, newPassword string) error {
+	hashedToken := tokenUtil.HashToken(rawToken)
+
+	accID, err := s.store.GetAccountIDByPasswordResetToken(ctx, hashedToken)
+	if err != nil {
+		return errors.New("invalid or expired reset token")
+	}
+
+	_ = s.store.DeletePasswordResetToken(ctx, hashedToken)
+
+	acc, err := s.accountRepo.GetByID(ctx, accID)
+	if err != nil {
+		return err
+	}
+
+	newHash, err := s.hasher.Hash(newPassword)
+	if err != nil {
+		return err
+	}
+
+	acc.UpdatePasswordHash(&newHash)
+	if err := s.accountRepo.Update(ctx, acc); err != nil {
+		return err
+	}
+
+	return s.store.RevokeAllByAccountID(ctx, acc.ID())
+}
+
+func (s *AuthService) ChangePassword(ctx context.Context, accID account.AccountID, currentPassword, newPassword string) error {
+	acc, err := s.accountRepo.GetByID(ctx, accID)
+	if err != nil {
+		return err
+	}
+
+	match, err := s.hasher.Compare(*acc.PasswordHash(), currentPassword)
+	if err != nil || !match {
+		return auth.ErrInvalidCredentials
+	}
+
+	newHash, err := s.hasher.Hash(newPassword)
+	if err != nil {
+		return err
+	}
+
+	acc.UpdatePasswordHash(&newHash)
+	if err := s.accountRepo.Update(ctx, acc); err != nil {
+		return err
+	}
+
+	return s.store.RevokeAllByAccountID(ctx, acc.ID())
 }

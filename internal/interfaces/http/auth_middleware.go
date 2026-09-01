@@ -23,7 +23,7 @@ func AuthMiddleware(tokenSvc auth.TokenService) gin.HandlerFunc {
 			return
 		}
 
-		c.Set("user_id", claims.UserID)
+		c.Set("account_id", claims.AccountID)
 		c.Set("role", claims.Role)
 		c.Next()
 	}

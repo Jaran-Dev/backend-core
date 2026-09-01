@@ -3,13 +3,13 @@ package lesson
 import "github.com/Jaran-Dev/backend-core/internal/domain/course"
 
 type LessonTranslation struct {
-	lessonID    course.LessonID
+	lessonID    LessonID
 	locale      course.Locale
 	title       string
 	description string
 }
 
-func NewLessonTranslation(lessonID course.LessonID, locale course.Locale, title, description string) LessonTranslation {
+func NewLessonTranslation(lessonID LessonID, locale course.Locale, title, description string) LessonTranslation {
 	return LessonTranslation{
 		lessonID:    lessonID,
 		locale:      locale,
@@ -18,7 +18,7 @@ func NewLessonTranslation(lessonID course.LessonID, locale course.Locale, title,
 	}
 }
 
-func (t *LessonTranslation) LessonID() course.LessonID {
+func (t *LessonTranslation) LessonID() LessonID {
 	return t.lessonID
 }
 

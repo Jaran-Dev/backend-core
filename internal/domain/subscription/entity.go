@@ -3,13 +3,13 @@ package subscription
 import (
 	"time"
 
-	"github.com/Jaran-Dev/backend-core/internal/domain/user"
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	"github.com/google/uuid"
 )
 
 type Subscription struct {
 	id          SubscriptionID
-	userID      user.UserID
+	accountID   account.AccountID
 	source      Source
 	startsAt    time.Time
 	endsAt      time.Time // Zero value means lifetime access
@@ -17,14 +17,14 @@ type Subscription struct {
 	createdAt   time.Time
 }
 
-func NewSubscription(userID user.UserID, source Source, startsAt, endsAt time.Time, providerRef string) (*Subscription, error) {
+func NewSubscription(accountID account.AccountID, source Source, startsAt, endsAt time.Time, providerRef string) (*Subscription, error) {
 	if !source.IsValid() {
 		return nil, ErrInvalidSource
 	}
 
 	return &Subscription{
 		id:          SubscriptionID(uuid.New()),
-		userID:      userID,
+		accountID:   accountID,
 		source:      source,
 		startsAt:    startsAt,
 		endsAt:      endsAt,
@@ -37,8 +37,8 @@ func (s *Subscription) ID() SubscriptionID {
 	return s.id
 }
 
-func (s *Subscription) UserID() user.UserID {
-	return s.userID
+func (s *Subscription) UserID() account.AccountID {
+	return s.accountID
 }
 
 func (s *Subscription) Source() Source {
@@ -72,7 +72,7 @@ func (s *Subscription) IsActive() bool {
 	return s.endsAt.After(now)
 }
 
-func UnmarshalSubscription(id uuid.UUID, userID user.UserID, sourceStr string, startsAt time.Time, endsAt *time.Time, providerRef *string, createdAt time.Time) (*Subscription, error) {
+func UnmarshalSubscription(id uuid.UUID, accountID account.AccountID, sourceStr string, startsAt time.Time, endsAt *time.Time, providerRef *string, createdAt time.Time) (*Subscription, error) {
 	source := Source(sourceStr)
 	if !source.IsValid() {
 		return nil, ErrInvalidSource
@@ -90,7 +90,7 @@ func UnmarshalSubscription(id uuid.UUID, userID user.UserID, sourceStr string, s
 
 	return &Subscription{
 		id:          SubscriptionID(id),
-		userID:      userID,
+		accountID:   accountID,
 		source:      source,
 		startsAt:    startsAt,
 		endsAt:      endsAtTime,
