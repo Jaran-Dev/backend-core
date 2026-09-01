@@ -5,15 +5,16 @@ import (
 	"time"
 
 	"github.com/Jaran-Dev/backend-core/internal/domain/course"
+	"github.com/Jaran-Dev/backend-core/internal/domain/course/module"
 
 	"github.com/google/uuid"
 )
 
 type Lesson struct {
-	id         course.LessonID
-	moduleID   course.ModuleID
+	id         LessonID
+	moduleID   module.ModuleID
 	position   int
-	accessType course.LessonAccessType
+	accessType LessonAccessType
 	asset      VideoAsset
 	status     LessonVideoStatus // Derived from asset status
 	createdAt  time.Time
@@ -23,24 +24,24 @@ type Lesson struct {
 	subtitles    []Subtitle
 }
 
-func NewLesson(moduleID course.ModuleID, position int) *Lesson {
+func NewLesson(moduleID module.ModuleID, position int) *Lesson {
 	now := time.Now()
 	return &Lesson{
-		id:         course.LessonID(uuid.New()),
+		id:         LessonID(uuid.New()),
 		moduleID:   moduleID,
 		position:   position,
-		accessType: course.AccessPreview, // Default to preview according to MVP baseline
+		accessType: AccessPreview, // Default to preview according to MVP baseline
 		status:     VideoStatusUploading,
 		createdAt:  now,
 		updatedAt:  now,
 	}
 }
 
-func (l *Lesson) ID() course.LessonID {
+func (l *Lesson) ID() LessonID {
 	return l.id
 }
 
-func (l *Lesson) ModuleID() course.ModuleID {
+func (l *Lesson) ModuleID() module.ModuleID {
 	return l.moduleID
 }
 
@@ -48,7 +49,7 @@ func (l *Lesson) Position() int {
 	return l.position
 }
 
-func (l *Lesson) AccessType() course.LessonAccessType {
+func (l *Lesson) AccessType() LessonAccessType {
 	return l.accessType
 }
 
@@ -76,7 +77,7 @@ func (l *Lesson) Subtitles() []Subtitle {
 	return l.subtitles
 }
 
-func (l *Lesson) UpdateAccessType(access course.LessonAccessType) error {
+func (l *Lesson) UpdateAccessType(access LessonAccessType) error {
 	if !access.IsValid() {
 		return ErrInvalidAccessType
 	}
@@ -164,7 +165,7 @@ func UnmarshalLesson(
 	translations []LessonTranslation,
 	subtitles []Subtitle,
 ) (*Lesson, error) {
-	if !course.LessonAccessType(accessTypeStr).IsValid() {
+	if !LessonAccessType(accessTypeStr).IsValid() {
 		return nil, ErrInvalidAccessType
 	}
 
@@ -181,10 +182,10 @@ func UnmarshalLesson(
 	}
 
 	return &Lesson{
-		id:           course.LessonID(id),
-		moduleID:     course.ModuleID(moduleID),
+		id:           LessonID(id),
+		moduleID:     module.ModuleID(moduleID),
 		position:     position,
-		accessType:   course.LessonAccessType(accessTypeStr),
+		accessType:   LessonAccessType(accessTypeStr),
 		asset:        asset,
 		status:       status,
 		createdAt:    createdAt,
@@ -215,7 +216,7 @@ func UnmarshalVideoAsset(assetID, playbackID string, durationSec int, statusStr 
 	}, nil
 }
 
-func UnmarshalLessonTranslation(lessonID course.LessonID, locale course.Locale, title, description string) (LessonTranslation, error) {
+func UnmarshalLessonTranslation(lessonID LessonID, locale course.Locale, title, description string) (LessonTranslation, error) {
 	if !locale.IsValid() {
 		return LessonTranslation{}, course.ErrInvalidLocale
 	}
@@ -227,7 +228,7 @@ func UnmarshalLessonTranslation(lessonID course.LessonID, locale course.Locale, 
 	}, nil
 }
 
-func UnmarshalSubtitle(lessonID course.LessonID, locale course.Locale, url string) (Subtitle, error) {
+func UnmarshalSubtitle(lessonID LessonID, locale course.Locale, url string) (Subtitle, error) {
 	if !locale.IsValid() {
 		return Subtitle{}, course.ErrInvalidLocale
 	}

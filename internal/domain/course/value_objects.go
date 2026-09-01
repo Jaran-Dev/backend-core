@@ -8,19 +8,7 @@ import (
 
 type CourseID uuid.UUID
 
-type ModuleID uuid.UUID
-
-type LessonID uuid.UUID
-
 func (id CourseID) String() string {
-	return uuid.UUID(id).String()
-}
-
-func (id ModuleID) String() string {
-	return uuid.UUID(id).String()
-}
-
-func (id LessonID) String() string {
 	return uuid.UUID(id).String()
 }
 
@@ -48,17 +36,9 @@ const (
 	CourseStatusArchived  CourseStatus = "archived"
 )
 
-type LessonAccessType string
-
-const (
-	AccessFree    LessonAccessType = "free"    // Available to everyone, no login required
-	AccessPreview LessonAccessType = "preview" // Available to logged-in users
-	AccessPremium LessonAccessType = "premium" // Available only to subscribed users
-)
-
-func (a LessonAccessType) IsValid() bool {
-	switch a {
-	case AccessFree, AccessPreview, AccessPremium:
+func (s CourseStatus) IsValid() bool {
+	switch s {
+	case CourseStatusDraft, CourseStatusPublished, CourseStatusArchived:
 		return true
 	}
 	return false

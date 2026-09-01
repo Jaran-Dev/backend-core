@@ -4,22 +4,23 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	"github.com/Jaran-Dev/backend-core/internal/domain/course"
-	"github.com/Jaran-Dev/backend-core/internal/domain/user"
+	"github.com/Jaran-Dev/backend-core/internal/domain/course/lesson"
 	"github.com/google/uuid"
 )
 
 type Enrollment struct {
 	id         uuid.UUID
-	userID     user.UserID
+	accountID  account.AccountID
 	courseID   course.CourseID
 	enrolledAt time.Time
 }
 
-func NewEnrollment(userID user.UserID, courseID course.CourseID) *Enrollment {
+func NewEnrollment(accountID account.AccountID, courseID course.CourseID) *Enrollment {
 	return &Enrollment{
 		id:         uuid.New(),
-		userID:     userID,
+		accountID:  accountID,
 		courseID:   courseID,
 		enrolledAt: time.Now(),
 	}
@@ -29,8 +30,8 @@ func (e *Enrollment) ID() uuid.UUID {
 	return e.id
 }
 
-func (e *Enrollment) UserID() user.UserID {
-	return e.userID
+func (e *Enrollment) UserID() account.AccountID {
+	return e.accountID
 }
 
 func (e *Enrollment) CourseID() course.CourseID {
@@ -43,17 +44,17 @@ func (e *Enrollment) EnrolledAt() time.Time {
 
 type LessonProgress struct {
 	id         uuid.UUID
-	userID     user.UserID
-	lessonID   course.LessonID
+	accountID  account.AccountID
+	lessonID   lesson.LessonID
 	watchedSec int
 	completed  bool
 	updatedAt  time.Time
 }
 
-func NewLessonProgress(userID user.UserID, lessonID course.LessonID) *LessonProgress {
+func NewLessonProgress(accountID account.AccountID, lessonID lesson.LessonID) *LessonProgress {
 	return &LessonProgress{
 		id:         uuid.New(),
-		userID:     userID,
+		accountID:  accountID,
 		lessonID:   lessonID,
 		watchedSec: 0,
 		completed:  false,
@@ -65,11 +66,11 @@ func (lp *LessonProgress) ID() uuid.UUID {
 	return lp.id
 }
 
-func (lp *LessonProgress) UserID() user.UserID {
-	return lp.userID
+func (lp *LessonProgress) UserID() account.AccountID {
+	return lp.accountID
 }
 
-func (lp *LessonProgress) LessonID() course.LessonID {
+func (lp *LessonProgress) LessonID() lesson.LessonID {
 	return lp.lessonID
 }
 
@@ -102,19 +103,19 @@ func (lp *LessonProgress) MarkComplete() {
 	lp.updatedAt = time.Now()
 }
 
-func UnmarshalEnrollment(id uuid.UUID, userID user.UserID, courseID course.CourseID, enrolledAt time.Time) (*Enrollment, error) {
+func UnmarshalEnrollment(id uuid.UUID, accountID account.AccountID, courseID course.CourseID, enrolledAt time.Time) (*Enrollment, error) {
 	if id == uuid.Nil {
 		return nil, errors.New("cannot unmarshal enrollment: id is nil")
 	}
 	return &Enrollment{
 		id:         id,
-		userID:     userID,
+		accountID:  accountID,
 		courseID:   courseID,
 		enrolledAt: enrolledAt,
 	}, nil
 }
 
-func UnmarshalLessonProgress(id uuid.UUID, userID user.UserID, lessonID course.LessonID, watchedSec int, completed bool, updatedAt time.Time) (*LessonProgress, error) {
+func UnmarshalLessonProgress(id uuid.UUID, accountID account.AccountID, lessonID lesson.LessonID, watchedSec int, completed bool, updatedAt time.Time) (*LessonProgress, error) {
 	if id == uuid.Nil {
 		return nil, errors.New("cannot unmarshal lesson progress: id is nil")
 	}
@@ -124,7 +125,7 @@ func UnmarshalLessonProgress(id uuid.UUID, userID user.UserID, lessonID course.L
 
 	return &LessonProgress{
 		id:         id,
-		userID:     userID,
+		accountID:  accountID,
 		lessonID:   lessonID,
 		watchedSec: watchedSec,
 		completed:  completed,

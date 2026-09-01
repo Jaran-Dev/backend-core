@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 
+	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	"github.com/Jaran-Dev/backend-core/internal/domain/user"
 )
 
@@ -12,7 +13,7 @@ type CheckoutResult struct {
 }
 
 type WebhookResult struct {
-	UserID      user.UserID
+	UserID      account.AccountID
 	ProviderRef string
 	Source      Source
 	StartsAt    interface{}
