@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-type UserModel struct {
+type UserORM struct {
 	AccountID   uuid.UUID `gorm:"primaryKey"`
 	DisplayName string
 	UILocale    string
@@ -21,16 +21,16 @@ type UserModel struct {
 	UpdatedAt   time.Time
 }
 
-func (UserModel) TableName() string { return "users" }
+func (UserORM) TableName() string { return "users" }
 
-func (m UserModel) toDomain() *domainUser.User {
+func (m UserORM) toDomain() *domainUser.User {
 	return domainUser.UnmarshalUser(
 		domainAccount.AccountID(m.AccountID), m.DisplayName, m.UILocale, m.CreatedAt, m.UpdatedAt,
 	)
 }
 
-func fromDomain(u *domainUser.User) UserModel {
-	return UserModel{
+func toPersistence(u *domainUser.User) UserORM {
+	return UserORM{
 		AccountID:   uuid.UUID(u.AccountID()),
 		DisplayName: u.DisplayName(),
 		UILocale:    u.UILocale(),
@@ -48,18 +48,18 @@ func NewRepository(db *gorm.DB) domainUser.Repository {
 }
 
 func (r *pgRepository) CreateWithAccount(ctx context.Context, acc *domainAccount.Account, u *domainUser.User) error {
-	accModel := repoAccount.FromDomain(acc)
-	userModel := fromDomain(u)
+	accORM := repoAccount.ToPersistence(acc)
+	userORM := toPersistence(u)
 
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&accModel).Error; err != nil {
+		if err := tx.Create(&accORM).Error; err != nil {
 			if errors.Is(err, gorm.ErrDuplicatedKey) {
 				return domainAccount.ErrAccountAlreadyExists
 			}
 			return err
 		}
 
-		if err := tx.Create(&userModel).Error; err != nil {
+		if err := tx.Create(&userORM).Error; err != nil {
 			return err
 		}
 
@@ -70,8 +70,8 @@ func (r *pgRepository) CreateWithAccount(ctx context.Context, acc *domainAccount
 }
 
 func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.AccountID) (*domainUser.User, error) {
-	var model UserModel
-	err := r.db.WithContext(ctx).First(&model, "account_id = ?", uuid.UUID(accID)).Error
+	var orm UserORM
+	err := r.db.WithContext(ctx).First(&orm, "account_id = ?", uuid.UUID(accID)).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("user profile not found")
@@ -79,5 +79,5 @@ func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.A
 		return nil, err
 	}
 
-	return model.toDomain(), nil
+	return orm.toDomain(), nil
 }
