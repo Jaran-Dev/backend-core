@@ -53,7 +53,7 @@ type pgRepository struct {
 	db *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) domainOauth.Repository {
+func NewOAuthAccountRepository(db *gorm.DB) domainOauth.Repository {
 	return &pgRepository{db: db}
 }
 

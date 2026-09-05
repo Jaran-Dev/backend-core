@@ -44,7 +44,7 @@ type pgRepository struct {
 	db *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) domainUser.Repository {
+func NewUserRepository(db *gorm.DB) domainUser.Repository {
 	return &pgRepository{db: db}
 }
 

@@ -35,7 +35,7 @@ type pgRepository struct {
 	db *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) domainAdmin.Repository {
+func NewAdminRepository(db *gorm.DB) domainAdmin.Repository {
 	return &pgRepository{db: db}
 }
 
