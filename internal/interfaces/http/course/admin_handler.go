@@ -2,7 +2,6 @@ package coursehttp
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"time"
 
@@ -48,13 +47,13 @@ func (h *AdminCourseHandler) Create(c *gin.Context) {
 		return
 	}
 
-	adminID, err := getAdminIDFromContext(c)
+	accountID, err := rootHttp.GetAccountIDFromContext(c)
 	if err != nil {
 		c.Error(err)
 		return
 	}
 
-	course, err := h.uc.Create(c.Request.Context(), req.Slug, req.CoverURL, adminID)
+	course, err := h.uc.Create(c.Request.Context(), req.Slug, req.CoverURL, accountID)
 	if err != nil {
 		c.Error(err)
 		return
@@ -147,29 +146,6 @@ func (h *AdminCourseHandler) ChangeStatus(c *gin.Context) {
 
 	response := mapToCourseResponse(updatedCourse)
 	c.JSON(http.StatusOK, response)
-}
-
-func getAdminIDFromContext(c *gin.Context) (account.AccountID, error) {
-	idVal, exists := c.Get("user_id")
-	if !exists {
-		return account.AccountID(uuid.Nil), errors.New("UNAUTHORIZED: missing user_id in context")
-	}
-
-	var rawUUID uuid.UUID
-	switch v := idVal.(type) {
-	case uuid.UUID:
-		rawUUID = v
-	case string:
-		parsed, err := uuid.Parse(v)
-		if err != nil {
-			return account.AccountID(uuid.Nil), errors.New("UNAUTHORIZED: invalid user_id format in context")
-		}
-		rawUUID = parsed
-	default:
-		return account.AccountID(uuid.Nil), errors.New("UNAUTHORIZED: invalid user_id type in context")
-	}
-
-	return account.AccountID(rawUUID), nil
 }
 
 func mapToCourseResponse(c *domainCourse.Course) CourseResponse {

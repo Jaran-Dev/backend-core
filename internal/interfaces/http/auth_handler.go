@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Jaran-Dev/backend-core/internal/application/auth"
-	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainAuth "github.com/Jaran-Dev/backend-core/internal/domain/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -100,12 +99,12 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 }
 
 func (h *AuthHandler) ListSessions(c *gin.Context) {
-	accIDVal, exists := c.Get("account_id")
-	if !exists {
+	accID, err := GetAccountIDFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.Error(err)
 		return
 	}
-	accID := accIDVal.(account.AccountID)
 
 	sessions, err := h.svc.ListSessions(c.Request.Context(), accID)
 	if err != nil {
@@ -117,12 +116,12 @@ func (h *AuthHandler) ListSessions(c *gin.Context) {
 }
 
 func (h *AuthHandler) RevokeSession(c *gin.Context) {
-	accIDVal, exists := c.Get("account_id")
-	if !exists {
+	accID, err := GetAccountIDFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.Error(err)
 		return
 	}
-	accID := accIDVal.(account.AccountID)
 
 	sessionIDStr := c.Param("id")
 	sessionID, err := uuid.Parse(sessionIDStr)
@@ -223,12 +222,12 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	accIDVal, exists := c.Get("account_id")
-	if !exists {
+	accID, err := GetAccountIDFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.Error(err)
 		return
 	}
-	accID := accIDVal.(account.AccountID)
 
 	if err := h.svc.ChangePassword(c.Request.Context(), accID, req.CurrentPassword, req.NewPassword); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid current password"})

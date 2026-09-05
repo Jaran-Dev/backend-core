@@ -7,7 +7,6 @@ import (
 	"time"
 
 	appOauth "github.com/Jaran-Dev/backend-core/internal/application/oauth"
-	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainAuth "github.com/Jaran-Dev/backend-core/internal/domain/auth"
 	domainOauth "github.com/Jaran-Dev/backend-core/internal/domain/oauth"
 	"github.com/gin-gonic/gin"
@@ -106,12 +105,12 @@ func (h *OAuthHandler) Link(c *gin.Context) {
 		return
 	}
 
-	accIDVal, exists := c.Get("account_id")
-	if !exists {
+	accID, err := GetAccountIDFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.Error(err)
 		return
 	}
-	accID := accIDVal.(domainAccount.AccountID)
 
 	if err := h.svc.LinkAccount(c.Request.Context(), accID, provider, code, state); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -129,12 +128,12 @@ func (h *OAuthHandler) Unlink(c *gin.Context) {
 		return
 	}
 
-	accIDVal, exists := c.Get("account_id")
-	if !exists {
+	accID, err := GetAccountIDFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.Error(err)
 		return
 	}
-	accID := accIDVal.(domainAccount.AccountID)
 
 	if err := h.svc.UnlinkAccount(c.Request.Context(), accID, provider); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
