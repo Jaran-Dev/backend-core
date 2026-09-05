@@ -29,30 +29,40 @@ func NewAdminModuleService(mr domainModule.Repository, cr domainCourse.Repositor
 }
 
 func (s *AdminModuleService) Create(ctx context.Context, courseID domainCourse.CourseID, title string) (*domainModule.Module, error) {
-	courseExists, err := s.courseRepo.ExistsByID(ctx, courseID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify course existence: %w", err)
-	}
-	if !courseExists {
-		return nil, domainCourse.ErrCourseNotFound
-	}
+	var newModule *domainModule.Module
 
-	currentCount, err := s.moduleRepo.CountByCourseID(ctx, courseID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to calculate module position: %w", err)
-	}
-	nextPosition := int(currentCount) // 0-indexed
+	err := s.txManager.Do(ctx, func(txCtx context.Context) error {
+		courseExists, err := s.courseRepo.ExistsByID(txCtx, courseID)
+		if err != nil {
+			return fmt.Errorf("failed to verify course existence: %w", err)
+		}
+		if !courseExists {
+			return domainCourse.ErrCourseNotFound
+		}
 
-	module, err := domainModule.NewModule(courseID, title, nextPosition)
+		currentCount, err := s.moduleRepo.CountByCourseID(txCtx, courseID)
+		if err != nil {
+			return fmt.Errorf("failed to calculate module position: %w", err)
+		}
+		nextPosition := int(currentCount)
+
+		mod, err := domainModule.NewModule(courseID, title, nextPosition)
+		if err != nil {
+			return err
+		}
+
+		if err := s.moduleRepo.Create(txCtx, mod); err != nil {
+			return fmt.Errorf("failed to create module: %w", err)
+		}
+
+		newModule = mod
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
-
-	if err := s.moduleRepo.Create(ctx, module); err != nil {
-		return nil, fmt.Errorf("failed to create module: %w", err)
-	}
-
-	return module, nil
+	return newModule, nil
 }
 
 func (s *AdminModuleService) UpdateMetadata(ctx context.Context, moduleID domainModule.ModuleID, title *string) (*domainModule.Module, error) {
