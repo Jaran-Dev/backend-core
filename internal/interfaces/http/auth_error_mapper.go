@@ -18,6 +18,10 @@ func (m *AuthErrorMapper) MapError(c *gin.Context, err error) bool {
 		c.JSON(http.StatusConflict, APIErrorResponse{Code: "ACCOUNT_EXISTS", Message: "Account with this email already exists."})
 		return true
 
+	case errors.Is(err, domainAccount.ErrAccountNotFound):
+		c.JSON(http.StatusNotFound, APIErrorResponse{Code: "ACCOUNT_NOT_FOUND", Message: "Account not found."})
+		return true
+
 	case errors.Is(err, domainAuth.ErrInvalidCredentials):
 		c.JSON(http.StatusUnauthorized, APIErrorResponse{Code: "INVALID_CREDENTIALS", Message: "Invalid email or password."})
 		return true
@@ -35,6 +39,5 @@ func (m *AuthErrorMapper) MapError(c *gin.Context, err error) bool {
 		return true
 	}
 
-	// Not an auth error
 	return false
 }

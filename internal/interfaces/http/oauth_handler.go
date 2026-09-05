@@ -68,7 +68,7 @@ func (h *OAuthHandler) Callback(c *gin.Context) {
 		return
 	}
 
-	h.setRefreshCookie(c, result.RefreshToken, result.ExpiresAt)
+	SetRefreshCookie(c, result.RefreshToken, result.ExpiresAt)
 
 	fragment := url.Values{}
 	fragment.Set("access_token", result.AccessToken)
@@ -137,17 +137,4 @@ func (h *OAuthHandler) Unlink(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "account unlinked successfully"})
-}
-
-func (h *OAuthHandler) setRefreshCookie(c *gin.Context, token string, expires time.Time) {
-	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(
-		"__Host-refresh_token",
-		token,
-		int(time.Until(expires).Seconds()),
-		"/",
-		"",
-		true,
-		true,
-	)
 }

@@ -56,7 +56,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	h.setRefreshCookie(c, refresh, exp)
+	SetRefreshCookie(c, refresh, exp)
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": access,
 		"expires_in":   int(time.Until(exp).Seconds()),
@@ -78,7 +78,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	h.setRefreshCookie(c, newRefresh, exp)
+	SetRefreshCookie(c, newRefresh, exp)
 	c.JSON(http.StatusOK, gin.H{"access_token": access})
 }
 
@@ -127,19 +127,6 @@ func (h *AuthHandler) RevokeSession(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "session revoked successfully"})
-}
-
-func (h *AuthHandler) setRefreshCookie(c *gin.Context, token string, expires time.Time) {
-	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(
-		"__Host-refresh_token",
-		token,
-		int(time.Until(expires).Seconds()),
-		"/",
-		"",
-		true,
-		true,
-	)
 }
 
 func (h *AuthHandler) VerifyEmail(c *gin.Context) {

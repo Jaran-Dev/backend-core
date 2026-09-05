@@ -27,8 +27,7 @@ func AccountIDKeyExtractor() KeyExtractorFunc {
 		if err == nil {
 			return "acc:" + accID.String()
 		}
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		c.Error(err)
+		// Fallback to IP if account is not authenticated
 		return "ip:" + c.ClientIP()
 	}
 }
