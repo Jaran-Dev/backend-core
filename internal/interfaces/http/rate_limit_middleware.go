@@ -23,11 +23,11 @@ func IPKeyExtractor() KeyExtractorFunc {
 
 func AccountIDKeyExtractor() KeyExtractorFunc {
 	return func(c *gin.Context) string {
-		if val, exists := c.Get("account_id"); exists {
-			if accID, ok := val.(string); ok {
-				return "acc:" + accID
-			}
+		accID, err := GetAccountIDFromContext(c)
+		if err == nil {
+			return "acc:" + accID.String()
 		}
+		// Fallback to IP if account is not authenticated
 		return "ip:" + c.ClientIP()
 	}
 }

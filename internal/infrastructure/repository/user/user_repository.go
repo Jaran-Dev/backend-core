@@ -7,13 +7,14 @@ import (
 
 	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainUser "github.com/Jaran-Dev/backend-core/internal/domain/user"
+	"github.com/Jaran-Dev/backend-core/internal/infrastructure/repository"
 	repoAccount "github.com/Jaran-Dev/backend-core/internal/infrastructure/repository/account"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-type UserModel struct {
+type UserORM struct {
 	AccountID   uuid.UUID `gorm:"primaryKey"`
 	DisplayName string
 	UILocale    string
@@ -21,16 +22,16 @@ type UserModel struct {
 	UpdatedAt   time.Time
 }
 
-func (UserModel) TableName() string { return "users" }
+func (UserORM) TableName() string { return "users" }
 
-func (m UserModel) toDomain() *domainUser.User {
+func (m UserORM) toDomain() *domainUser.User {
 	return domainUser.UnmarshalUser(
 		domainAccount.AccountID(m.AccountID), m.DisplayName, m.UILocale, m.CreatedAt, m.UpdatedAt,
 	)
 }
 
-func fromDomain(u *domainUser.User) UserModel {
-	return UserModel{
+func toPersistence(u *domainUser.User) UserORM {
+	return UserORM{
 		AccountID:   uuid.UUID(u.AccountID()),
 		DisplayName: u.DisplayName(),
 		UILocale:    u.UILocale(),
@@ -43,24 +44,26 @@ type pgRepository struct {
 	db *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) domainUser.Repository {
+func NewUserRepository(db *gorm.DB) domainUser.Repository {
 	return &pgRepository{db: db}
 }
 
 func (r *pgRepository) CreateWithAccount(ctx context.Context, acc *domainAccount.Account, u *domainUser.User) error {
-	accModel := repoAccount.FromDomain(acc)
-	userModel := fromDomain(u)
+	accORM := repoAccount.ToPersistence(acc)
+	userORM := toPersistence(u)
+	db := repository.GetDB(ctx, r.db)
 
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&accModel).Error; err != nil {
-			if errors.Is(err, gorm.ErrDuplicatedKey) {
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&accORM).Error; err != nil {
+			translatedErr := repository.TranslateGormError(err)
+			if errors.Is(translatedErr, gorm.ErrDuplicatedKey) {
 				return domainAccount.ErrAccountAlreadyExists
 			}
-			return err
+			return translatedErr
 		}
 
-		if err := tx.Create(&userModel).Error; err != nil {
-			return err
+		if err := tx.Create(&userORM).Error; err != nil {
+			return repository.TranslateGormError(err)
 		}
 
 		return nil
@@ -70,14 +73,17 @@ func (r *pgRepository) CreateWithAccount(ctx context.Context, acc *domainAccount
 }
 
 func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.AccountID) (*domainUser.User, error) {
-	var model UserModel
-	err := r.db.WithContext(ctx).First(&model, "account_id = ?", uuid.UUID(accID)).Error
+	var orm UserORM
+	db := repository.GetDB(ctx, r.db)
+
+	err := db.First(&orm, "account_id = ?", uuid.UUID(accID)).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrRecordNotFound) {
 			return nil, errors.New("user profile not found")
 		}
-		return nil, err
+		return nil, translatedErr
 	}
 
-	return model.toDomain(), nil
+	return orm.toDomain(), nil
 }

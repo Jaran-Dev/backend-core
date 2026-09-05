@@ -17,6 +17,10 @@ import (
 	"github.com/google/uuid"
 )
 
+type TransactionManager interface {
+	Do(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 type CallbackResult struct {
 	AccessToken  string
 	RefreshToken string
@@ -30,6 +34,7 @@ type OAuthService struct {
 	oauthRepo    domainOauth.Repository
 	accountRepo  domainAccount.Repository
 	userRepo     domainUser.Repository
+	txManager    TransactionManager
 	tokenSvc     domainAuth.TokenService
 	sessionStore domainAuth.SessionStore
 	refreshTTL   time.Duration
@@ -41,6 +46,7 @@ func NewOAuthService(
 	oauthRepo domainOauth.Repository,
 	accountRepo domainAccount.Repository,
 	userRepo domainUser.Repository,
+	txm TransactionManager,
 	tokenSvc domainAuth.TokenService,
 	sessionStore domainAuth.SessionStore,
 	refreshTTL time.Duration,
@@ -51,6 +57,7 @@ func NewOAuthService(
 		oauthRepo:    oauthRepo,
 		accountRepo:  accountRepo,
 		userRepo:     userRepo,
+		txManager:    txm,
 		tokenSvc:     tokenSvc,
 		sessionStore: sessionStore,
 		refreshTTL:   refreshTTL,
@@ -153,83 +160,79 @@ func (s *OAuthService) LinkAccount(ctx context.Context, accID domainAccount.Acco
 }
 
 func (s *OAuthService) UnlinkAccount(ctx context.Context, accID domainAccount.AccountID, providerName domainOauth.Provider) error {
-	links, err := s.oauthRepo.GetByAccountID(ctx, accID)
-	if err != nil {
-		return err
-	}
-
-	var toDelete *domainOauth.OAuthAccount
-	for _, l := range links {
-		if l.Provider() == providerName {
-			toDelete = l
-			break
+	return s.txManager.Do(ctx, func(txCtx context.Context) error {
+		links, err := s.oauthRepo.GetByAccountID(txCtx, accID)
+		if err != nil {
+			return err
 		}
-	}
 
-	if toDelete == nil {
-		return domainOauth.ErrOAuthAccountNotFound
-	}
+		var toDelete *domainOauth.OAuthAccount
+		for _, l := range links {
+			if l.Provider() == providerName {
+				toDelete = l
+				break
+			}
+		}
 
-	acc, err := s.accountRepo.GetByID(ctx, accID)
-	if err != nil {
-		return err
-	}
+		if toDelete == nil {
+			return domainOauth.ErrOAuthAccountNotFound
+		}
 
-	if acc.PasswordHash() == nil && len(links) == 1 {
-		return domainOauth.ErrCannotUnlinkLastMethod
-	}
+		acc, err := s.accountRepo.GetByID(txCtx, accID)
+		if err != nil {
+			return err
+		}
 
-	return s.oauthRepo.Delete(ctx, toDelete.ID())
+		// Invariant check: Must have a password OR more than 1 OAuth link
+		if acc.PasswordHash() == nil && len(links) == 1 {
+			return domainOauth.ErrCannotUnlinkLastMethod
+		}
+
+		return s.oauthRepo.Delete(txCtx, toDelete.ID())
+	})
 }
 
 func (s *OAuthService) resolveOAuthAccountID(ctx context.Context, providerName domainOauth.Provider, profile domainOauth.Profile) (domainAccount.AccountID, error) {
-	existingOauth, err := s.oauthRepo.GetByProvider(ctx, providerName, profile.ProviderUserID)
-	if err == nil {
-		return existingOauth.AccountID(), nil
-	}
-	if !errors.Is(err, domainOauth.ErrOAuthAccountNotFound) {
-		return domainAccount.AccountID(uuid.Nil), err
-	}
+	var accID domainAccount.AccountID
 
-	existingAcc, err := s.accountRepo.GetByEmail(ctx, profile.Email)
-	if err != nil && !errors.Is(err, domainAccount.ErrAccountNotFound) {
-		return domainAccount.AccountID(uuid.Nil), err
-	}
-
-	if err == nil {
-		accID := existingAcc.ID()
-		if err := s.linkOAuthAccount(ctx, accID, providerName, profile); err != nil {
-			return domainAccount.AccountID(uuid.Nil), err
+	err := s.txManager.Do(ctx, func(txCtx context.Context) error {
+		existingOauth, err := s.oauthRepo.GetByProvider(txCtx, providerName, profile.ProviderUserID)
+		if err == nil {
+			accID = existingOauth.AccountID()
+			return nil
 		}
-		return accID, nil
-	}
+		if !errors.Is(err, domainOauth.ErrOAuthAccountNotFound) {
+			return err
+		}
 
-	acc, err := domainAccount.NewAccount(profile.Email, nil, domainAccount.RoleUser)
+		existingAcc, err := s.accountRepo.GetByEmail(txCtx, profile.Email)
+		if err != nil && !errors.Is(err, domainAccount.ErrAccountNotFound) {
+			return err
+		}
+
+		if err == nil {
+			// User exists by email, just link OAuth
+			accID = existingAcc.ID()
+			return s.linkOAuthAccount(txCtx, accID, providerName, profile)
+		}
+
+		// Create new account and user
+		acc, err := domainAccount.NewAccount(profile.Email, nil, domainAccount.RoleUser)
+		if err != nil {
+			return err
+		}
+		acc.Verify()
+		u := domainUser.NewUser(acc.ID(), profile.DisplayName, profile.Locale)
+
+		if err := s.userRepo.CreateWithAccount(txCtx, acc, u); err != nil {
+			return err
+		}
+
+		accID = acc.ID()
+		return s.linkOAuthAccount(txCtx, accID, providerName, profile)
+	})
+
 	if err != nil {
-		return domainAccount.AccountID(uuid.Nil), err
-	}
-	acc.Verify()
-
-	u := domainUser.NewUser(acc.ID(), profile.DisplayName, profile.Locale)
-
-	if err := s.userRepo.CreateWithAccount(ctx, acc, u); err != nil {
-		if errors.Is(err, domainAccount.ErrAccountAlreadyExists) {
-			existingAcc, fetchErr := s.accountRepo.GetByEmail(ctx, profile.Email)
-			if fetchErr != nil {
-				return domainAccount.AccountID(uuid.Nil), fetchErr
-			}
-
-			accID := existingAcc.ID()
-			if err := s.linkOAuthAccount(ctx, accID, providerName, profile); err != nil {
-				return domainAccount.AccountID(uuid.Nil), err
-			}
-			return accID, nil
-		}
-		return domainAccount.AccountID(uuid.Nil), err
-	}
-
-	accID := acc.ID()
-	if err := s.linkOAuthAccount(ctx, accID, providerName, profile); err != nil {
 		return domainAccount.AccountID(uuid.Nil), err
 	}
 	return accID, nil

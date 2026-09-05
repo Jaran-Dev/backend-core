@@ -7,24 +7,25 @@ import (
 
 	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainAdmin "github.com/Jaran-Dev/backend-core/internal/domain/admin"
+	"github.com/Jaran-Dev/backend-core/internal/infrastructure/repository"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-type AdminModel struct {
+type AdminORM struct {
 	AccountID uuid.UUID `gorm:"primaryKey"`
 	CreatedAt time.Time
 }
 
-func (AdminModel) TableName() string { return "admins" }
+func (AdminORM) TableName() string { return "admins" }
 
-func (m AdminModel) toDomain() *domainAdmin.Admin {
+func (m AdminORM) toDomain() *domainAdmin.Admin {
 	return domainAdmin.UnmarshalAdmin(domainAccount.AccountID(m.AccountID), m.CreatedAt)
 }
 
-func fromDomain(a *domainAdmin.Admin) AdminModel {
-	return AdminModel{
+func toPersistence(a *domainAdmin.Admin) AdminORM {
+	return AdminORM{
 		AccountID: uuid.UUID(a.AccountID()),
 		CreatedAt: a.CreatedAt(),
 	}
@@ -34,23 +35,31 @@ type pgRepository struct {
 	db *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) domainAdmin.Repository {
+func NewAdminRepository(db *gorm.DB) domainAdmin.Repository {
 	return &pgRepository{db: db}
 }
 
 func (r *pgRepository) Create(ctx context.Context, a *domainAdmin.Admin) error {
-	model := fromDomain(a)
-	return r.db.WithContext(ctx).Create(&model).Error
+	orm := toPersistence(a)
+	db := repository.GetDB(ctx, r.db)
+
+	if err := db.Create(&orm).Error; err != nil {
+		return repository.TranslateGormError(err)
+	}
+	return nil
 }
 
 func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.AccountID) (*domainAdmin.Admin, error) {
-	var model AdminModel
-	err := r.db.WithContext(ctx).First(&model, "account_id = ?", uuid.UUID(accID)).Error
+	var orm AdminORM
+	db := repository.GetDB(ctx, r.db)
+
+	err := db.First(&orm, "account_id = ?", uuid.UUID(accID)).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrRecordNotFound) {
 			return nil, errors.New("admin profile not found")
 		}
-		return nil, err
+		return nil, translatedErr
 	}
-	return model.toDomain(), nil
+	return orm.toDomain(), nil
 }
