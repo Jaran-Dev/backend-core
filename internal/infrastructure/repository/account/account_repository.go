@@ -6,6 +6,7 @@ import (
 	"time"
 
 	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
+	"github.com/Jaran-Dev/backend-core/internal/infrastructure/repository"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -50,7 +51,9 @@ func NewRepository(db *gorm.DB) domainAccount.Repository {
 
 func (r *pgRepository) Create(ctx context.Context, acc *domainAccount.Account) error {
 	orm := ToPersistence(acc)
-	if err := r.db.WithContext(ctx).Create(&orm).Error; err != nil {
+	db := repository.GetDB(ctx, r.db)
+
+	if err := db.Create(&orm).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return domainAccount.ErrAccountAlreadyExists
 		}
@@ -61,7 +64,9 @@ func (r *pgRepository) Create(ctx context.Context, acc *domainAccount.Account) e
 
 func (r *pgRepository) GetByEmail(ctx context.Context, email string) (*domainAccount.Account, error) {
 	var orm AccountORM
-	err := r.db.WithContext(ctx).Where("email = ?", email).First(&orm).Error
+	db := repository.GetDB(ctx, r.db)
+
+	err := db.Where("email = ?", email).First(&orm).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, domainAccount.ErrAccountNotFound
@@ -73,7 +78,9 @@ func (r *pgRepository) GetByEmail(ctx context.Context, email string) (*domainAcc
 
 func (r *pgRepository) GetByID(ctx context.Context, id domainAccount.AccountID) (*domainAccount.Account, error) {
 	var orm AccountORM
-	err := r.db.WithContext(ctx).First(&orm, "id = ?", uuid.UUID(id)).Error
+	db := repository.GetDB(ctx, r.db)
+
+	err := db.First(&orm, "id = ?", uuid.UUID(id)).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, domainAccount.ErrAccountNotFound
@@ -85,5 +92,7 @@ func (r *pgRepository) GetByID(ctx context.Context, id domainAccount.AccountID) 
 
 func (r *pgRepository) Update(ctx context.Context, acc *domainAccount.Account) error {
 	orm := ToPersistence(acc)
-	return r.db.WithContext(ctx).Save(&orm).Error
+	db := repository.GetDB(ctx, r.db)
+
+	return db.Save(&orm).Error
 }

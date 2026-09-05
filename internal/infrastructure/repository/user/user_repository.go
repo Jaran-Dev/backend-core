@@ -7,6 +7,7 @@ import (
 
 	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainUser "github.com/Jaran-Dev/backend-core/internal/domain/user"
+	"github.com/Jaran-Dev/backend-core/internal/infrastructure/repository"
 	repoAccount "github.com/Jaran-Dev/backend-core/internal/infrastructure/repository/account"
 
 	"github.com/google/uuid"
@@ -50,8 +51,9 @@ func NewRepository(db *gorm.DB) domainUser.Repository {
 func (r *pgRepository) CreateWithAccount(ctx context.Context, acc *domainAccount.Account, u *domainUser.User) error {
 	accORM := repoAccount.ToPersistence(acc)
 	userORM := toPersistence(u)
+	db := repository.GetDB(ctx, r.db)
 
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&accORM).Error; err != nil {
 			if errors.Is(err, gorm.ErrDuplicatedKey) {
 				return domainAccount.ErrAccountAlreadyExists
@@ -71,7 +73,9 @@ func (r *pgRepository) CreateWithAccount(ctx context.Context, acc *domainAccount
 
 func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.AccountID) (*domainUser.User, error) {
 	var orm UserORM
-	err := r.db.WithContext(ctx).First(&orm, "account_id = ?", uuid.UUID(accID)).Error
+	db := repository.GetDB(ctx, r.db)
+
+	err := db.First(&orm, "account_id = ?", uuid.UUID(accID)).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("user profile not found")

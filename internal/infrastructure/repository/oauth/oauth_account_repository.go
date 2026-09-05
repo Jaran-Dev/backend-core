@@ -7,6 +7,7 @@ import (
 
 	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainOauth "github.com/Jaran-Dev/backend-core/internal/domain/oauth"
+	"github.com/Jaran-Dev/backend-core/internal/infrastructure/repository"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -58,7 +59,9 @@ func NewRepository(db *gorm.DB) domainOauth.Repository {
 
 func (r *pgRepository) Create(ctx context.Context, o *domainOauth.OAuthAccount) error {
 	orm := toPersistence(o)
-	if err := r.db.WithContext(ctx).Create(&orm).Error; err != nil {
+	db := repository.GetDB(ctx, r.db)
+
+	if err := db.Create(&orm).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return domainOauth.ErrAccountAlreadyLinked
 		}
@@ -69,7 +72,9 @@ func (r *pgRepository) Create(ctx context.Context, o *domainOauth.OAuthAccount) 
 
 func (r *pgRepository) GetByProvider(ctx context.Context, p domainOauth.Provider, puid string) (*domainOauth.OAuthAccount, error) {
 	var orm OAuthAccountORM
-	err := r.db.WithContext(ctx).
+	db := repository.GetDB(ctx, r.db)
+
+	err := db.
 		Where("provider = ? AND provider_user_id = ?", string(p), puid).
 		First(&orm).Error
 	if err != nil {
@@ -83,7 +88,9 @@ func (r *pgRepository) GetByProvider(ctx context.Context, p domainOauth.Provider
 
 func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.AccountID) ([]*domainOauth.OAuthAccount, error) {
 	var orms []OAuthAccountORM
-	err := r.db.WithContext(ctx).
+	db := repository.GetDB(ctx, r.db)
+
+	err := db.
 		Where("account_id = ?", uuid.UUID(accID)).
 		Find(&orms).Error
 	if err != nil {
@@ -102,7 +109,9 @@ func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.A
 }
 
 func (r *pgRepository) Delete(ctx context.Context, id domainOauth.OAuthAccountID) error {
-	res := r.db.WithContext(ctx).
+	db := repository.GetDB(ctx, r.db)
+
+	res := db.
 		Delete(&OAuthAccountORM{}, "id = ?", uuid.UUID(id))
 	if res.Error != nil {
 		return res.Error
