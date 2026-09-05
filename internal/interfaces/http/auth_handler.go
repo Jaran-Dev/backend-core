@@ -27,39 +27,32 @@ func extractMeta(c *gin.Context) domainAuth.SessionMetadata {
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
-	var req struct {
-		Email       string `json:"email" binding:"required,email"`
-		Password    string `json:"password" binding:"required,min=8"`
-		DisplayName string `json:"display_name"`
-		UILocale    string `json:"ui_locale"`
-	}
+	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
 	u, err := h.svc.Register(c.Request.Context(), req.Email, req.Password, req.DisplayName, req.UILocale)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
+
 	c.JSON(http.StatusCreated, gin.H{"account_id": u.AccountID()})
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
-	var req struct {
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required"`
-	}
+	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
 	meta := extractMeta(c)
 	access, refresh, exp, err := h.svc.Login(c.Request.Context(), req.Email, req.Password, meta)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		c.Error(err)
 		return
 	}
 
@@ -73,7 +66,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	rawRefresh, err := c.Cookie("__Host-refresh_token")
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing refresh token"})
+		c.Error(NewHTTPError(http.StatusUnauthorized, "UNAUTHORIZED", "missing refresh token"))
 		return
 	}
 
@@ -81,7 +74,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	access, newRefresh, exp, err := h.svc.Refresh(c.Request.Context(), rawRefresh, meta)
 	if err != nil {
 		c.SetCookie("__Host-refresh_token", "", -1, "/", "", true, true)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh session"})
+		c.Error(err)
 		return
 	}
 
@@ -101,14 +94,13 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 func (h *AuthHandler) ListSessions(c *gin.Context) {
 	accID, err := GetAccountIDFromContext(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		c.Error(err)
 		return
 	}
 
 	sessions, err := h.svc.ListSessions(c.Request.Context(), accID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch sessions"})
+		c.Error(NewHTTPError(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to fetch sessions"))
 		return
 	}
 
@@ -118,7 +110,6 @@ func (h *AuthHandler) ListSessions(c *gin.Context) {
 func (h *AuthHandler) RevokeSession(c *gin.Context) {
 	accID, err := GetAccountIDFromContext(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		c.Error(err)
 		return
 	}
@@ -126,12 +117,12 @@ func (h *AuthHandler) RevokeSession(c *gin.Context) {
 	sessionIDStr := c.Param("id")
 	sessionID, err := uuid.Parse(sessionIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id format"})
+		c.Error(NewHTTPError(http.StatusBadRequest, "VALIDATION_ERROR", "invalid session id format"))
 		return
 	}
 
 	if err := h.svc.RevokeSession(c.Request.Context(), accID, sessionID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to revoke session"})
+		c.Error(NewHTTPError(http.StatusInternalServerError, "INTERNAL_ERROR", "failed to revoke session"))
 		return
 	}
 
@@ -152,16 +143,14 @@ func (h *AuthHandler) setRefreshCookie(c *gin.Context, token string, expires tim
 }
 
 func (h *AuthHandler) VerifyEmail(c *gin.Context) {
-	var req struct {
-		Token string `json:"token" binding:"required"`
-	}
+	var req VerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
 	if err := h.svc.VerifyEmail(c.Request.Context(), req.Token); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or expired token"})
+		c.Error(NewHTTPError(http.StatusBadRequest, "INVALID_TOKEN", "invalid or expired token"))
 		return
 	}
 
@@ -169,11 +158,9 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 }
 
 func (h *AuthHandler) ResendVerification(c *gin.Context) {
-	var req struct {
-		Email string `json:"email" binding:"required,email"`
-	}
+	var req ResendVerificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
@@ -182,11 +169,9 @@ func (h *AuthHandler) ResendVerification(c *gin.Context) {
 }
 
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {
-	var req struct {
-		Email string `json:"email" binding:"required,email"`
-	}
+	var req ForgotPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
@@ -195,17 +180,14 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 }
 
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
-	var req struct {
-		Token       string `json:"token" binding:"required"`
-		NewPassword string `json:"new_password" binding:"required,min=8"`
-	}
+	var req ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
 	if err := h.svc.ResetPassword(c.Request.Context(), req.Token, req.NewPassword); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(NewHTTPError(http.StatusBadRequest, "INVALID_TOKEN", "invalid or expired token"))
 		return
 	}
 
@@ -213,24 +195,20 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 }
 
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
-	var req struct {
-		CurrentPassword string `json:"current_password" binding:"required"`
-		NewPassword     string `json:"new_password" binding:"required,min=8"`
-	}
+	var req ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
 	accID, err := GetAccountIDFromContext(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		c.Error(err)
 		return
 	}
 
 	if err := h.svc.ChangePassword(c.Request.Context(), accID, req.CurrentPassword, req.NewPassword); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid current password"})
+		c.Error(NewHTTPError(http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid current password"))
 		return
 	}
 
