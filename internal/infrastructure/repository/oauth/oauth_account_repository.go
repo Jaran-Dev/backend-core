@@ -62,10 +62,11 @@ func (r *pgRepository) Create(ctx context.Context, o *domainOauth.OAuthAccount) 
 	db := repository.GetDB(ctx, r.db)
 
 	if err := db.Create(&orm).Error; err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrDuplicatedKey) {
 			return domainOauth.ErrAccountAlreadyLinked
 		}
-		return err
+		return translatedErr
 	}
 	return nil
 }
@@ -78,10 +79,11 @@ func (r *pgRepository) GetByProvider(ctx context.Context, p domainOauth.Provider
 		Where("provider = ? AND provider_user_id = ?", string(p), puid).
 		First(&orm).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrRecordNotFound) {
 			return nil, domainOauth.ErrOAuthAccountNotFound
 		}
-		return nil, err
+		return nil, translatedErr
 	}
 	return orm.toDomain()
 }
@@ -94,7 +96,7 @@ func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.A
 		Where("account_id = ?", uuid.UUID(accID)).
 		Find(&orms).Error
 	if err != nil {
-		return nil, err
+		return nil, repository.TranslateGormError(err)
 	}
 
 	links := make([]*domainOauth.OAuthAccount, 0, len(orms))
@@ -114,7 +116,7 @@ func (r *pgRepository) Delete(ctx context.Context, id domainOauth.OAuthAccountID
 	res := db.
 		Delete(&OAuthAccountORM{}, "id = ?", uuid.UUID(id))
 	if res.Error != nil {
-		return res.Error
+		return repository.TranslateGormError(res.Error)
 	}
 	if res.RowsAffected == 0 {
 		return domainOauth.ErrOAuthAccountNotFound

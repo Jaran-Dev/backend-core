@@ -43,7 +43,10 @@ func (r *pgRepository) Create(ctx context.Context, a *domainAdmin.Admin) error {
 	orm := toPersistence(a)
 	db := repository.GetDB(ctx, r.db)
 
-	return db.Create(&orm).Error
+	if err := db.Create(&orm).Error; err != nil {
+		return repository.TranslateGormError(err)
+	}
+	return nil
 }
 
 func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.AccountID) (*domainAdmin.Admin, error) {
@@ -52,10 +55,11 @@ func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.A
 
 	err := db.First(&orm, "account_id = ?", uuid.UUID(accID)).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrRecordNotFound) {
 			return nil, errors.New("admin profile not found")
 		}
-		return nil, err
+		return nil, translatedErr
 	}
 	return orm.toDomain(), nil
 }

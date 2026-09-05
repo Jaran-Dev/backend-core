@@ -20,7 +20,8 @@ type Config struct {
 
 func NewPostgres(ctx context.Context, cfg Config) (*gorm.DB, error) {
 	gormCfg := &gorm.Config{
-		PrepareStmt: true,
+		PrepareStmt:    true,
+		TranslateError: true,
 		Logger: logger.New(
 			slog.NewLogLogger(slog.Default().Handler(), slog.LevelInfo),
 			logger.Config{

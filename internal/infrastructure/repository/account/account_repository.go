@@ -54,10 +54,11 @@ func (r *pgRepository) Create(ctx context.Context, acc *domainAccount.Account) e
 	db := repository.GetDB(ctx, r.db)
 
 	if err := db.Create(&orm).Error; err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrDuplicatedKey) {
 			return domainAccount.ErrAccountAlreadyExists
 		}
-		return err
+		return translatedErr
 	}
 	return nil
 }
@@ -68,10 +69,11 @@ func (r *pgRepository) GetByEmail(ctx context.Context, email string) (*domainAcc
 
 	err := db.Where("email = ?", email).First(&orm).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrRecordNotFound) {
 			return nil, domainAccount.ErrAccountNotFound
 		}
-		return nil, err
+		return nil, translatedErr
 	}
 	return orm.toDomain()
 }
@@ -82,10 +84,11 @@ func (r *pgRepository) GetByID(ctx context.Context, id domainAccount.AccountID) 
 
 	err := db.First(&orm, "id = ?", uuid.UUID(id)).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrRecordNotFound) {
 			return nil, domainAccount.ErrAccountNotFound
 		}
-		return nil, err
+		return nil, translatedErr
 	}
 	return orm.toDomain()
 }
@@ -94,5 +97,8 @@ func (r *pgRepository) Update(ctx context.Context, acc *domainAccount.Account) e
 	orm := ToPersistence(acc)
 	db := repository.GetDB(ctx, r.db)
 
-	return db.Save(&orm).Error
+	if err := db.Save(&orm).Error; err != nil {
+		return repository.TranslateGormError(err)
+	}
+	return nil
 }

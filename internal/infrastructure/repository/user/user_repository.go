@@ -55,14 +55,15 @@ func (r *pgRepository) CreateWithAccount(ctx context.Context, acc *domainAccount
 
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&accORM).Error; err != nil {
-			if errors.Is(err, gorm.ErrDuplicatedKey) {
+			translatedErr := repository.TranslateGormError(err)
+			if errors.Is(translatedErr, gorm.ErrDuplicatedKey) {
 				return domainAccount.ErrAccountAlreadyExists
 			}
-			return err
+			return translatedErr
 		}
 
 		if err := tx.Create(&userORM).Error; err != nil {
-			return err
+			return repository.TranslateGormError(err)
 		}
 
 		return nil
@@ -77,10 +78,11 @@ func (r *pgRepository) GetByAccountID(ctx context.Context, accID domainAccount.A
 
 	err := db.First(&orm, "account_id = ?", uuid.UUID(accID)).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrRecordNotFound) {
 			return nil, errors.New("user profile not found")
 		}
-		return nil, err
+		return nil, translatedErr
 	}
 
 	return orm.toDomain(), nil
