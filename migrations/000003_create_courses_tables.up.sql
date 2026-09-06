@@ -3,6 +3,7 @@ CREATE TABLE courses(
     slug text UNIQUE NOT NULL,
     status text NOT NULL DEFAULT 'draft', -- draft, published, archived
     cover_url text,
+    version int NOT NULL DEFAULT 1,
     created_by uuid NOT NULL REFERENCES accounts(id),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
