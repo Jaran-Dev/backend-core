@@ -3,6 +3,7 @@ CREATE TABLE modules(
     course_id uuid NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     position int NOT NULL,
     title text NOT NULL DEFAULT '',
+    version int NOT NULL DEFAULT 1,
     UNIQUE (course_id, position)
 );
 

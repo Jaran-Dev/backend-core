@@ -5,14 +5,15 @@ import (
 	"net/http"
 
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
+	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type StudentCourseUseCase interface {
-	GetPublishedCourse(ctx context.Context, slug domainCourse.Slug, preferredLocale domainCourse.Locale) (*domainCourse.Course, domainCourse.Locale, error)
-	ListPublishedCourses(ctx context.Context, params domainCourse.QueryParams, locale domainCourse.Locale) ([]*domainCourse.Course, int64, error)
+	GetPublishedCourse(ctx context.Context, slug domainCourse.Slug, preferredLocale shared.Locale) (*domainCourse.Course, shared.Locale, error)
+	ListPublishedCourses(ctx context.Context, params domainCourse.QueryParams, locale shared.Locale) ([]*domainCourse.Course, int64, error)
 }
 
 type StudentCourseHandler struct {
@@ -45,9 +46,9 @@ func (h *StudentCourseHandler) GetBySlug(c *gin.Context) {
 		return
 	}
 
-	preferredLocale := domainCourse.LocaleEnglish
+	preferredLocale := shared.LocaleEnglish
 	if query.Locale != "" {
-		preferredLocale = domainCourse.Locale(query.Locale)
+		preferredLocale = shared.Locale(query.Locale)
 	}
 
 	course, resolvedLocale, err := h.uc.GetPublishedCourse(c.Request.Context(), slug, preferredLocale)
@@ -76,7 +77,7 @@ func (h *StudentCourseHandler) List(c *gin.Context) {
 		Status:   string(domainCourse.CourseStatusPublished),
 	}
 
-	preferredLocale := domainCourse.Locale(query.Locale)
+	preferredLocale := shared.Locale(query.Locale)
 
 	courses, total, err := h.uc.ListPublishedCourses(c.Request.Context(), params, preferredLocale)
 	if err != nil {
@@ -110,7 +111,7 @@ func mapToPublicCourseListDTOs(courses []*domainCourse.Course) []PublicCourseLis
 	return data
 }
 
-func mapToPublicCourseDetailDTO(c *domainCourse.Course, resolvedLocale domainCourse.Locale) PublicCourseDetailDTO {
+func mapToPublicCourseDetailDTO(c *domainCourse.Course, resolvedLocale shared.Locale) PublicCourseDetailDTO {
 	var title, description string
 
 	if c.Translations() != nil && len(c.Translations()) > 0 {

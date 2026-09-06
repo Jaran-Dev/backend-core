@@ -7,6 +7,7 @@ import (
 	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
 	domainModule "github.com/Jaran-Dev/backend-core/internal/domain/course/module"
+	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
 )
 
 type TransactionManager interface {
@@ -62,7 +63,7 @@ func (s *AdminCourseService) UpdateMetadata(ctx context.Context, courseID domain
 	return course, nil
 }
 
-func (s *AdminCourseService) UpsertTranslation(ctx context.Context, courseID domainCourse.CourseID, locale domainCourse.Locale, title, description string) (*domainCourse.Course, error) {
+func (s *AdminCourseService) UpsertTranslation(ctx context.Context, courseID domainCourse.CourseID, locale shared.Locale, title, description string) (*domainCourse.Course, error) {
 	if !locale.IsValid() {
 		return nil, domainCourse.ErrInvalidLocale
 	}

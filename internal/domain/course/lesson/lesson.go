@@ -6,6 +6,7 @@ import (
 
 	"github.com/Jaran-Dev/backend-core/internal/domain/course"
 	"github.com/Jaran-Dev/backend-core/internal/domain/course/module"
+	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
 
 	"github.com/google/uuid"
 )
@@ -109,7 +110,7 @@ func (l *Lesson) MarkVideoError() {
 	l.updatedAt = time.Now()
 }
 
-func (l *Lesson) AddOrUpdateTranslation(locale course.Locale, title, desc string) error {
+func (l *Lesson) AddOrUpdateTranslation(locale shared.Locale, title, desc string) error {
 	if !locale.IsValid() {
 		return course.ErrInvalidLocale
 	}
@@ -132,7 +133,7 @@ func (l *Lesson) AddOrUpdateTranslation(locale course.Locale, title, desc string
 	return nil
 }
 
-func (l *Lesson) AddSubtitle(locale course.Locale, url string) error {
+func (l *Lesson) AddSubtitle(locale shared.Locale, url string) error {
 	if !locale.IsValid() {
 		return course.ErrInvalidLocale
 	}
@@ -216,7 +217,7 @@ func UnmarshalVideoAsset(assetID, playbackID string, durationSec int, statusStr 
 	}, nil
 }
 
-func UnmarshalLessonTranslation(lessonID LessonID, locale course.Locale, title, description string) (LessonTranslation, error) {
+func UnmarshalLessonTranslation(lessonID LessonID, locale shared.Locale, title, description string) (LessonTranslation, error) {
 	if !locale.IsValid() {
 		return LessonTranslation{}, course.ErrInvalidLocale
 	}
@@ -228,7 +229,7 @@ func UnmarshalLessonTranslation(lessonID LessonID, locale course.Locale, title, 
 	}, nil
 }
 
-func UnmarshalSubtitle(lessonID LessonID, locale course.Locale, url string) (Subtitle, error) {
+func UnmarshalSubtitle(lessonID LessonID, locale shared.Locale, url string) (Subtitle, error) {
 	if !locale.IsValid() {
 		return Subtitle{}, course.ErrInvalidLocale
 	}

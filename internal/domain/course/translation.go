@@ -1,13 +1,15 @@
 package course
 
+import "github.com/Jaran-Dev/backend-core/internal/domain/shared"
+
 type CourseTranslation struct {
 	courseID    CourseID
-	locale      Locale
+	locale      shared.Locale
 	title       string
 	description string
 }
 
-func NewCourseTranslation(courseID CourseID, locale Locale, title, description string) CourseTranslation {
+func NewCourseTranslation(courseID CourseID, locale shared.Locale, title, description string) CourseTranslation {
 	return CourseTranslation{
 		courseID:    courseID,
 		locale:      locale,
@@ -20,7 +22,7 @@ func (t *CourseTranslation) CourseID() CourseID {
 	return t.courseID
 }
 
-func (t *CourseTranslation) Locale() Locale {
+func (t *CourseTranslation) Locale() shared.Locale {
 	return t.locale
 }
 
@@ -40,7 +42,7 @@ func (t *CourseTranslation) UpdateDescription(description string) {
 	t.description = description
 }
 
-func UnmarshalCourseTranslation(courseID CourseID, locale Locale, title, description string) (CourseTranslation, error) {
+func UnmarshalCourseTranslation(courseID CourseID, locale shared.Locale, title, description string) (CourseTranslation, error) {
 	if !locale.IsValid() {
 		return CourseTranslation{}, ErrInvalidLocale
 	}

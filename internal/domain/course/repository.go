@@ -1,6 +1,10 @@
 package course
 
-import "context"
+import (
+	"context"
+
+	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
+)
 
 // QueryParams encapsulates pagination and filtering for listing courses.
 type QueryParams struct {
@@ -17,7 +21,7 @@ type Repository interface {
 	Delete(ctx context.Context, id CourseID) error
 	List(ctx context.Context, params QueryParams) ([]*Course, int64, error)
 	ExistsByID(ctx context.Context, id CourseID) (bool, error)
-	UpsertTranslation(ctx context.Context, courseID CourseID, locale Locale, title, description string) (*Course, error)
-	GetPublishedBySlugWithLocale(ctx context.Context, slug Slug, preferredLocale Locale) (*Course, Locale, error)
-	ListPublishedWithLocale(ctx context.Context, params QueryParams, preferredLocale Locale) ([]*Course, int64, error)
+	UpsertTranslation(ctx context.Context, courseID CourseID, locale shared.Locale, title, description string) (*Course, error)
+	GetPublishedBySlugWithLocale(ctx context.Context, slug Slug, preferredLocale shared.Locale) (*Course, shared.Locale, error)
+	ListPublishedWithLocale(ctx context.Context, params QueryParams, preferredLocale shared.Locale) ([]*Course, int64, error)
 }

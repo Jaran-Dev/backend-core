@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Jaran-Dev/backend-core/internal/domain/account"
+	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
 
 	"github.com/google/uuid"
 )
@@ -84,7 +85,7 @@ func (c *Course) UpdateMetadata(slug Slug, coverURL string) {
 	c.updatedAt = time.Now()
 }
 
-func (c *Course) AddOrUpdateTranslation(locale Locale, title, description string) error {
+func (c *Course) AddOrUpdateTranslation(locale shared.Locale, title, description string) error {
 	if !locale.IsValid() {
 		return ErrInvalidLocale
 	}
@@ -104,7 +105,7 @@ func (c *Course) AddOrUpdateTranslation(locale Locale, title, description string
 	return nil
 }
 
-func (c *Course) RemoveTranslation(locale Locale) error {
+func (c *Course) RemoveTranslation(locale shared.Locale) error {
 	if !locale.IsValid() {
 		return ErrInvalidLocale
 	}
@@ -130,7 +131,7 @@ func (c *Course) Publish() error {
 
 	hasEnglish := false
 	for _, t := range c.translations {
-		if t.Locale() == LocaleEnglish && t.Title() != "" {
+		if t.Locale() == shared.LocaleEnglish && t.Title() != "" {
 			hasEnglish = true
 			break
 		}
