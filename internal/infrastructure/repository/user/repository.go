@@ -35,19 +35,25 @@ type UserORM struct {
 func (UserORM) TableName() string { return "users" }
 
 func (m UserORM) toDomain() (*domainUser.User, error) {
-	var avatar domainUser.ProfileImage
+	avatarStatus := domainUser.ImageStatus(m.AvatarStatus)
+	if avatarStatus == "" {
+		avatarStatus = domainUser.ImageStatusPending
+	}
+	avatarURL := ""
 	if m.AvatarURL != nil {
-		avatar = domainUser.NewProfileImage(*m.AvatarURL, domainUser.ImageStatus(m.AvatarStatus))
-	} else {
-		avatar = domainUser.NewProfileImage("", domainUser.ImageStatusPending)
+		avatarURL = *m.AvatarURL
 	}
+	avatar := domainUser.NewProfileImage(avatarURL, avatarStatus)
 
-	var cover domainUser.ProfileImage
-	if m.CoverURL != nil {
-		cover = domainUser.NewProfileImage(*m.CoverURL, domainUser.ImageStatus(m.CoverStatus))
-	} else {
-		cover = domainUser.NewProfileImage("", domainUser.ImageStatusPending)
+	coverStatus := domainUser.ImageStatus(m.CoverStatus)
+	if avatarStatus == "" {
+		avatarStatus = domainUser.ImageStatusPending
 	}
+	coverURL := ""
+	if m.CoverURL != nil {
+		coverURL = *m.CoverURL
+	}
+	cover := domainUser.NewProfileImage(coverURL, coverStatus)
 
 	return domainUser.UnmarshalUser(
 		domainAccount.AccountID(m.AccountID),

@@ -33,7 +33,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	u, err := h.svc.Register(c.Request.Context(), req.Email, req.Password, req.DisplayName, req.UILocale)
+	u, err := h.svc.Register(c.Request.Context(), req.Email, req.Password, req.DisplayName)
 	if err != nil {
 		c.Error(err)
 		return

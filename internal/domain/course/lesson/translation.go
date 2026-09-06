@@ -1,15 +1,15 @@
 package lesson
 
-import "github.com/Jaran-Dev/backend-core/internal/domain/course"
+import "github.com/Jaran-Dev/backend-core/internal/domain/shared"
 
 type LessonTranslation struct {
 	lessonID    LessonID
-	locale      course.Locale
+	locale      shared.Locale
 	title       string
 	description string
 }
 
-func NewLessonTranslation(lessonID LessonID, locale course.Locale, title, description string) LessonTranslation {
+func NewLessonTranslation(lessonID LessonID, locale shared.Locale, title, description string) LessonTranslation {
 	return LessonTranslation{
 		lessonID:    lessonID,
 		locale:      locale,
@@ -22,7 +22,7 @@ func (t *LessonTranslation) LessonID() LessonID {
 	return t.lessonID
 }
 
-func (t *LessonTranslation) Locale() course.Locale {
+func (t *LessonTranslation) Locale() shared.Locale {
 	return t.locale
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
+	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
 	rootHttp "github.com/Jaran-Dev/backend-core/internal/interfaces/http"
 
 	"github.com/gin-gonic/gin"
@@ -16,7 +17,7 @@ import (
 type AdminCourseUseCase interface {
 	Create(ctx context.Context, slugStr, coverURL string, adminID account.AccountID) (*domainCourse.Course, error)
 	UpdateMetadata(ctx context.Context, courseID domainCourse.CourseID, slug *string, coverURL *string) (*domainCourse.Course, error)
-	UpsertTranslation(ctx context.Context, courseID domainCourse.CourseID, locale domainCourse.Locale, title, description string) (*domainCourse.Course, error)
+	UpsertTranslation(ctx context.Context, courseID domainCourse.CourseID, locale shared.Locale, title, description string) (*domainCourse.Course, error)
 	Publish(ctx context.Context, courseID domainCourse.CourseID) (*domainCourse.Course, error)
 	Archive(ctx context.Context, courseID domainCourse.CourseID) (*domainCourse.Course, error)
 }
@@ -104,7 +105,7 @@ func (h *AdminCourseHandler) UpsertTranslation(c *gin.Context) {
 		return
 	}
 
-	locale := domainCourse.Locale(req.Locale)
+	locale := shared.Locale(req.Locale)
 
 	updatedCourse, err := h.uc.UpsertTranslation(c.Request.Context(), courseID, locale, req.Title, req.Description)
 	if err != nil {

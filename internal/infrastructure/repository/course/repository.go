@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
+	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
 	"github.com/Jaran-Dev/backend-core/internal/infrastructure/repository"
 
 	"github.com/google/uuid"
@@ -134,7 +135,7 @@ func (r *pgRepository) Delete(ctx context.Context, id domainCourse.CourseID) err
 	return nil
 }
 
-func (r *pgRepository) UpsertTranslation(ctx context.Context, courseID domainCourse.CourseID, locale domainCourse.Locale, title, description string) (*domainCourse.Course, error) {
+func (r *pgRepository) UpsertTranslation(ctx context.Context, courseID domainCourse.CourseID, locale shared.Locale, title, description string) (*domainCourse.Course, error) {
 	db := repository.GetDB(ctx, r.db)
 
 	transORM := CourseTranslationORM{
@@ -160,7 +161,7 @@ func (r *pgRepository) UpsertTranslation(ctx context.Context, courseID domainCou
 	return r.GetByID(ctx, courseID, true)
 }
 
-func (r *pgRepository) GetPublishedBySlugWithLocale(ctx context.Context, slug domainCourse.Slug, preferredLocale domainCourse.Locale) (*domainCourse.Course, domainCourse.Locale, error) {
+func (r *pgRepository) GetPublishedBySlugWithLocale(ctx context.Context, slug domainCourse.Slug, preferredLocale shared.Locale) (*domainCourse.Course, shared.Locale, error) {
 	db := repository.GetDB(ctx, r.db)
 
 	query := `
@@ -194,15 +195,15 @@ func (r *pgRepository) GetPublishedBySlugWithLocale(ctx context.Context, slug do
 		return nil, "", err
 	}
 
-	resolvedLocale := domainCourse.LocaleEnglish
+	resolvedLocale := shared.LocaleEnglish
 	if flat.TransLocale != nil {
-		resolvedLocale = domainCourse.Locale(*flat.TransLocale)
+		resolvedLocale = shared.Locale(*flat.TransLocale)
 	}
 
 	return course, resolvedLocale, nil
 }
 
-func (r *pgRepository) ListPublishedWithLocale(ctx context.Context, params domainCourse.QueryParams, preferredLocale domainCourse.Locale) ([]*domainCourse.Course, int64, error) {
+func (r *pgRepository) ListPublishedWithLocale(ctx context.Context, params domainCourse.QueryParams, preferredLocale shared.Locale) ([]*domainCourse.Course, int64, error) {
 	db := repository.GetDB(ctx, r.db)
 
 	baseQuery := db.Model(&CourseORM{}).Where("status = ?", string(domainCourse.CourseStatusPublished))

@@ -5,6 +5,7 @@ import (
 
 	domainAccount "github.com/Jaran-Dev/backend-core/internal/domain/account"
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
+	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
 
 	"github.com/google/uuid"
 )
@@ -84,7 +85,7 @@ func toDomain(orm *CourseORM) (*domainCourse.Course, error) {
 
 		t, err := domainCourse.UnmarshalCourseTranslation(
 			domainCourse.CourseID(tORM.CourseID),
-			domainCourse.Locale(tORM.Locale),
+			shared.Locale(tORM.Locale),
 			tORM.Title,
 			descStr,
 		)

@@ -32,16 +32,20 @@ type User struct {
 	version     int
 }
 
-func NewUser(accID account.AccountID, displayName string) *User {
+func NewUser(accID account.AccountID, displayName string) (*User, error) {
+	dn, err := NewDisplayName(displayName)
+	if err != nil {
+		return nil, err
+	}
 	return &User{
 		accountID:   accID,
-		displayName: displayName,
+		displayName: dn.String(),
 		avatar:      NewProfileImage("", ImageStatusPending),
 		cover:       NewProfileImage("", ImageStatusPending),
 		createdAt:   time.Now(),
 		updatedAt:   time.Now(),
 		version:     1,
-	}
+	}, nil
 }
 
 func (u *User) AccountID() account.AccountID { return u.accountID }

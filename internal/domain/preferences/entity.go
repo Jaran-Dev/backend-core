@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Jaran-Dev/backend-core/internal/domain/account"
+	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
 )
 
 type UpdateParams struct {
@@ -21,11 +22,11 @@ type UpdateParams struct {
 
 type Preferences struct {
 	accountID            account.AccountID
-	uiLocale             Locale
+	uiLocale             shared.Locale
 	theme                Theme
 	playbackQuality      PlaybackQuality
 	autoplayNext         bool
-	subtitleLanguage     Locale
+	subtitleLanguage     shared.Locale
 	subtitlesEnabled     bool
 	skipIntro            bool
 	reducedMotion        bool
@@ -40,11 +41,11 @@ func NewPreferences(accID account.AccountID) *Preferences {
 	now := time.Now()
 	return &Preferences{
 		accountID:            accID,
-		uiLocale:             LocaleEnglish,
+		uiLocale:             shared.LocaleEnglish,
 		theme:                ThemeSystem,
 		playbackQuality:      QualityAuto,
 		autoplayNext:         true,
-		subtitleLanguage:     LocaleEnglish,
+		subtitleLanguage:     shared.LocaleEnglish,
 		subtitlesEnabled:     true,
 		skipIntro:            true,
 		reducedMotion:        false,
@@ -65,11 +66,11 @@ func NewPreferences(accID account.AccountID) *Preferences {
 }
 
 func (p *Preferences) AccountID() account.AccountID               { return p.accountID }
-func (p *Preferences) UILocale() Locale                           { return p.uiLocale }
+func (p *Preferences) UILocale() shared.Locale                    { return p.uiLocale }
 func (p *Preferences) Theme() Theme                               { return p.theme }
 func (p *Preferences) PlaybackQuality() PlaybackQuality           { return p.playbackQuality }
 func (p *Preferences) AutoplayNext() bool                         { return p.autoplayNext }
-func (p *Preferences) SubtitleLanguage() Locale                   { return p.subtitleLanguage }
+func (p *Preferences) SubtitleLanguage() shared.Locale            { return p.subtitleLanguage }
 func (p *Preferences) SubtitlesEnabled() bool                     { return p.subtitlesEnabled }
 func (p *Preferences) SkipIntro() bool                            { return p.skipIntro }
 func (p *Preferences) ReducedMotion() bool                        { return p.reducedMotion }
@@ -81,7 +82,7 @@ func (p *Preferences) Version() int                               { return p.ver
 
 func (p *Preferences) Update(params UpdateParams) error {
 	if params.UILocale != nil {
-		l, err := NewLocale(*params.UILocale)
+		l, err := shared.NewLocale(*params.UILocale)
 		if err != nil {
 			return err
 		}
@@ -105,7 +106,7 @@ func (p *Preferences) Update(params UpdateParams) error {
 		p.autoplayNext = *params.AutoplayNext
 	}
 	if params.SubtitleLanguage != nil {
-		l, err := NewLocale(*params.SubtitleLanguage)
+		l, err := shared.NewLocale(*params.SubtitleLanguage)
 		if err != nil {
 			return err
 		}
@@ -150,7 +151,7 @@ func UnmarshalPreferences(
 	createdAt, updatedAt time.Time,
 	version int,
 ) (*Preferences, error) {
-	l, err := NewLocale(uiLocale)
+	l, err := shared.NewLocale(uiLocale)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +166,7 @@ func UnmarshalPreferences(
 		return nil, err
 	}
 
-	sl, err := NewLocale(subtitleLanguage)
+	sl, err := shared.NewLocale(subtitleLanguage)
 	if err != nil {
 		return nil, err
 	}

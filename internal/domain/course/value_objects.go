@@ -12,22 +12,6 @@ func (id CourseID) String() string {
 	return uuid.UUID(id).String()
 }
 
-type Locale string
-
-const (
-	LocaleEnglish         Locale = "en"
-	LocaleSoraniKurdish   Locale = "ckb"
-	LocaleKurmanjiKurdish Locale = "kmr"
-)
-
-func (l Locale) IsValid() bool {
-	switch l {
-	case LocaleEnglish, LocaleSoraniKurdish, LocaleKurmanjiKurdish:
-		return true
-	}
-	return false
-}
-
 type CourseStatus string
 
 const (

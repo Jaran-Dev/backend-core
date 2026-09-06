@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
+	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
 )
 
 type StudentCourseService struct {
@@ -17,9 +18,9 @@ func NewStudentCourseService(cr domainCourse.Repository) *StudentCourseService {
 	}
 }
 
-func (s *StudentCourseService) GetPublishedCourse(ctx context.Context, slug domainCourse.Slug, preferredLocale domainCourse.Locale) (*domainCourse.Course, domainCourse.Locale, error) {
+func (s *StudentCourseService) GetPublishedCourse(ctx context.Context, slug domainCourse.Slug, preferredLocale shared.Locale) (*domainCourse.Course, shared.Locale, error) {
 	if !preferredLocale.IsValid() {
-		preferredLocale = domainCourse.LocaleEnglish
+		preferredLocale = shared.LocaleEnglish
 	}
 
 	course, resolvedLocale, err := s.courseRepo.GetPublishedBySlugWithLocale(ctx, slug, preferredLocale)
@@ -34,9 +35,9 @@ func (s *StudentCourseService) GetPublishedCourse(ctx context.Context, slug doma
 	return course, resolvedLocale, nil
 }
 
-func (s *StudentCourseService) ListPublishedCourses(ctx context.Context, params domainCourse.QueryParams, preferredLocale domainCourse.Locale) ([]*domainCourse.Course, int64, error) {
+func (s *StudentCourseService) ListPublishedCourses(ctx context.Context, params domainCourse.QueryParams, preferredLocale shared.Locale) ([]*domainCourse.Course, int64, error) {
 	if !preferredLocale.IsValid() {
-		preferredLocale = domainCourse.LocaleEnglish
+		preferredLocale = shared.LocaleEnglish
 	}
 
 	params.Status = string(domainCourse.CourseStatusPublished)

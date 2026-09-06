@@ -54,7 +54,7 @@ func NewAuthService(
 	}
 }
 
-func (s *AuthService) Register(ctx context.Context, email, password, displayName, uiLocale string) (*user.User, error) {
+func (s *AuthService) Register(ctx context.Context, email, password, displayName string) (*user.User, error) {
 	_, err := s.accountRepo.GetByEmail(ctx, email)
 	if err == nil {
 		return nil, account.ErrAccountAlreadyExists
@@ -72,7 +72,10 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 		return nil, err
 	}
 
-	u := user.NewUser(acc.ID(), displayName)
+	u, err := user.NewUser(acc.ID(), displayName)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := s.userRepo.CreateWithAccount(ctx, acc, u); err != nil {
 		return nil, err

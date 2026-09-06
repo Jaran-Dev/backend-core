@@ -1,14 +1,14 @@
 package lesson
 
-import "github.com/Jaran-Dev/backend-core/internal/domain/course"
+import "github.com/Jaran-Dev/backend-core/internal/domain/shared"
 
 type Subtitle struct {
 	lessonID LessonID
-	locale   course.Locale
+	locale   shared.Locale
 	url      string
 }
 
-func NewSubtitle(lessonID LessonID, locale course.Locale, url string) Subtitle {
+func NewSubtitle(lessonID LessonID, locale shared.Locale, url string) Subtitle {
 	return Subtitle{
 		lessonID: lessonID,
 		locale:   locale,
@@ -20,7 +20,7 @@ func (s Subtitle) LessonID() LessonID {
 	return s.lessonID
 }
 
-func (s Subtitle) Locale() course.Locale {
+func (s Subtitle) Locale() shared.Locale {
 	return s.locale
 }
 
