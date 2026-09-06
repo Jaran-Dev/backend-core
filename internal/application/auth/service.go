@@ -72,7 +72,7 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 		return nil, err
 	}
 
-	u := user.NewUser(acc.ID(), displayName, uiLocale)
+	u := user.NewUser(acc.ID(), displayName)
 
 	if err := s.userRepo.CreateWithAccount(ctx, acc, u); err != nil {
 		return nil, err

@@ -222,7 +222,7 @@ func (s *OAuthService) resolveOAuthAccountID(ctx context.Context, providerName d
 			return err
 		}
 		acc.Verify()
-		u := domainUser.NewUser(acc.ID(), profile.DisplayName, profile.Locale)
+		u := domainUser.NewUser(acc.ID(), profile.DisplayName)
 
 		if err := s.userRepo.CreateWithAccount(txCtx, acc, u); err != nil {
 			return err
