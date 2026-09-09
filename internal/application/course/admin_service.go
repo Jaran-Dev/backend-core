@@ -5,9 +5,12 @@ import (
 	"fmt"
 
 	"github.com/Jaran-Dev/backend-core/internal/domain/account"
+	domainCategory "github.com/Jaran-Dev/backend-core/internal/domain/category"
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
 	domainModule "github.com/Jaran-Dev/backend-core/internal/domain/course/module"
 	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
+
+	"github.com/google/uuid"
 )
 
 type TransactionManager interface {
@@ -15,13 +18,24 @@ type TransactionManager interface {
 }
 
 type AdminCourseService struct {
-	courseRepo domainCourse.Repository
-	moduleRepo domainModule.Repository
-	txManager  TransactionManager
+	courseRepo   domainCourse.Repository
+	moduleRepo   domainModule.Repository
+	categoryRepo domainCategory.Repository
+	txManager    TransactionManager
 }
 
-func NewAdminCourseService(cr domainCourse.Repository, mr domainModule.Repository, txm TransactionManager) *AdminCourseService {
-	return &AdminCourseService{courseRepo: cr, moduleRepo: mr, txManager: txm}
+func NewAdminCourseService(
+	cr domainCourse.Repository,
+	mr domainModule.Repository,
+	catR domainCategory.Repository,
+	txm TransactionManager,
+) *AdminCourseService {
+	return &AdminCourseService{
+		courseRepo:   cr,
+		moduleRepo:   mr,
+		categoryRepo: catR,
+		txManager:    txm,
+	}
 }
 
 func (s *AdminCourseService) Create(ctx context.Context, slugStr, coverURL string, adminID account.AccountID) (*domainCourse.Course, error) {
@@ -99,6 +113,22 @@ func (s *AdminCourseService) Publish(ctx context.Context, courseID domainCourse.
 		}
 		if count == 0 {
 			return domainCourse.ErrMissingModules
+		}
+
+		primaryCatID, err := s.courseRepo.GetPrimaryCategoryID(txCtx, courseID)
+		if err != nil {
+			return fmt.Errorf("failed to fetch primary category: %w", err)
+		}
+		if primaryCatID == uuid.Nil {
+			return domainCourse.ErrPrimaryCategoryNotAssigned
+		}
+
+		primaryCat, err := s.categoryRepo.GetByID(txCtx, domainCategory.CategoryID(primaryCatID), false)
+		if err != nil {
+			return err
+		}
+		if primaryCat.Status() != domainCategory.CategoryStatusPublished {
+			return domainCourse.ErrPrimaryCategoryNotPublished
 		}
 
 		if err := course.Publish(); err != nil {
