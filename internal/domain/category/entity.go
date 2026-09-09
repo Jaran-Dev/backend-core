@@ -153,7 +153,7 @@ func (c *Category) Archive() error {
 
 func (c *Category) SoftDelete() error {
 	if c.status == CategoryStatusPublished {
-		return errors.New("cannot delete a published category; archive it first")
+		return ErrInvalidStateTransition
 	}
 	now := time.Now()
 	c.deletedAt = &now
