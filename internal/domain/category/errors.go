@@ -13,5 +13,6 @@ var (
 	ErrConcurrentModification    = errors.New("concurrent modification detected: the data was updated by another transaction")
 	ErrCategoryHasCourses        = errors.New("category cannot be deleted or archived while courses are assigned to it")
 	ErrMaxDepthExceeded          = errors.New("category hierarchy max depth exceeded")
+	ErrInvalidDepth              = errors.New("invalid category depth: hierarchy max depth is 2")
 	ErrCircularReference         = errors.New("circular reference detected in category hierarchy")
 )

@@ -6,6 +6,11 @@ import (
 	"github.com/Jaran-Dev/backend-core/internal/domain/shared"
 )
 
+type CategoryNode struct {
+	Category *Category
+	Children []*CategoryNode
+}
+
 type Repository interface {
 	Create(ctx context.Context, c *Category) error
 	GetByID(ctx context.Context, id CategoryID, loadTranslations bool) (*Category, error)
@@ -22,12 +27,7 @@ type Repository interface {
 
 	UpsertTranslation(ctx context.Context, categoryID CategoryID, locale shared.Locale, title, description string) (*Category, error)
 
-	// ListPublishedTree returns all published categories in a flat list;
-	// the application layer or infra layer can build the tree structure using parent_id.
-	ListPublishedTree(ctx context.Context, preferredLocale shared.Locale) ([]*Category, error)
-}
-
-type CategoryNode struct {
-	Category *Category
-	Children []*CategoryNode
+	// ListPublishedTree returns all published categories structured as a tree
+	// using the closure table for hierarchy resolution.
+	ListPublishedTree(ctx context.Context, preferredLocale shared.Locale) ([]*CategoryNode, error)
 }
