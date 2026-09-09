@@ -35,6 +35,16 @@ type CourseTranslationORM struct {
 
 func (CourseTranslationORM) TableName() string { return "course_translations" }
 
+type CourseCategoryORM struct {
+	CourseID   uuid.UUID `gorm:"type:uuid;primaryKey"`
+	CategoryID uuid.UUID `gorm:"type:uuid;primaryKey"`
+	IsPrimary  bool      `gorm:"column:is_primary"`
+	Position   int
+	CreatedAt  time.Time `gorm:"autoCreateTime"`
+}
+
+func (CourseCategoryORM) TableName() string { return "course_categories" }
+
 func toPersistence(c *domainCourse.Course) *CourseORM {
 	var coverURL *string
 	if c.CoverURL() != "" {

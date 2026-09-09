@@ -208,6 +208,10 @@ func (r *pgRepository) ListPublishedWithLocale(ctx context.Context, params domai
 
 	baseQuery := db.Model(&CourseORM{}).Where("status = ?", string(domainCourse.CourseStatusPublished))
 
+	if params.CategoryID != uuid.Nil {
+		baseQuery = baseQuery.Where("id IN (SELECT course_id FROM course_categories WHERE category_id = ?)", params.CategoryID)
+	}
+
 	var total int64
 	if err := baseQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count published courses: %w", repository.TranslateGormError(err))
@@ -254,6 +258,10 @@ func (r *pgRepository) List(ctx context.Context, params domainCourse.QueryParams
 		query = query.Where("status = ?", params.Status)
 	}
 
+	if params.CategoryID != uuid.Nil {
+		query = query.Where("id IN (SELECT course_id FROM course_categories WHERE category_id = ?)", params.CategoryID)
+	}
+
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count courses: %w", repository.TranslateGormError(err))
@@ -281,4 +289,76 @@ func (r *pgRepository) List(ctx context.Context, params domainCourse.QueryParams
 	}
 
 	return courses, total, nil
+}
+
+func (r *pgRepository) CountCoursesByCategoryID(ctx context.Context, categoryID uuid.UUID) (int64, error) {
+	db := repository.GetDB(ctx, r.db)
+
+	var count int64
+	err := db.Model(&CourseCategoryORM{}).Where("category_id = ?", categoryID).Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed to count courses by category id: %w", repository.TranslateGormError(err))
+	}
+	return count, nil
+}
+
+func (r *pgRepository) GetPrimaryCategoryID(ctx context.Context, courseID domainCourse.CourseID) (uuid.UUID, error) {
+	db := repository.GetDB(ctx, r.db)
+
+	var orm CourseCategoryORM
+	err := db.Where("course_id = ? AND is_primary = ?", uuid.UUID(courseID), true).First(&orm).Error
+	if err != nil {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrRecordNotFound) {
+			return uuid.Nil, nil
+		}
+		return uuid.Nil, fmt.Errorf("failed to get primary category id: %w", translatedErr)
+	}
+	return orm.CategoryID, nil
+}
+
+func (r *pgRepository) AssignCategory(ctx context.Context, courseID domainCourse.CourseID, categoryID uuid.UUID, isPrimary bool, position int) error {
+	db := repository.GetDB(ctx, r.db)
+
+	orm := CourseCategoryORM{
+		CourseID:   uuid.UUID(courseID),
+		CategoryID: categoryID,
+		IsPrimary:  isPrimary,
+		Position:   position,
+	}
+
+	err := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "course_id"}, {Name: "category_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"is_primary", "position"}),
+	}).Create(&orm).Error
+
+	if err != nil {
+		translatedErr := repository.TranslateGormError(err)
+		if errors.Is(translatedErr, gorm.ErrDuplicatedKey) {
+			return domainCourse.ErrPrimaryCategoryAlreadyExists
+		}
+		if errors.Is(translatedErr, repository.ErrForeignKeyViolated) {
+			return domainCourse.ErrCourseNotFound
+		}
+		return fmt.Errorf("failed to assign category to course: %w", translatedErr)
+	}
+
+	return nil
+}
+
+func (r *pgRepository) UnassignCategory(ctx context.Context, courseID domainCourse.CourseID, categoryID uuid.UUID) error {
+	db := repository.GetDB(ctx, r.db)
+
+	result := db.Where("course_id = ? AND category_id = ?", uuid.UUID(courseID), categoryID).
+		Delete(&CourseCategoryORM{})
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to unassign category from course: %w", repository.TranslateGormError(result.Error))
+	}
+
+	if result.RowsAffected == 0 {
+		return domainCourse.ErrCourseNotFound
+	}
+
+	return nil
 }
