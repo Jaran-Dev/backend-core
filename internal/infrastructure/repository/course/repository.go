@@ -338,7 +338,7 @@ func (r *pgRepository) AssignCategory(ctx context.Context, courseID domainCourse
 			return domainCourse.ErrPrimaryCategoryAlreadyExists
 		}
 		if errors.Is(translatedErr, repository.ErrForeignKeyViolated) {
-			return domainCourse.ErrCourseNotFound
+			return repository.ErrForeignKeyViolated
 		}
 		return fmt.Errorf("failed to assign category to course: %w", translatedErr)
 	}

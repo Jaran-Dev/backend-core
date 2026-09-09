@@ -19,6 +19,7 @@ type Repository interface {
 	SoftDelete(ctx context.Context, id CategoryID) error
 
 	ExistsByID(ctx context.Context, id CategoryID) (bool, error)
+	HasChildren(ctx context.Context, id CategoryID) (bool, error)
 
 	// CheckDepthAndCycle is used to verify reparenting logic before applying it.
 	// Although DB triggers enforce this strictly, checking in the domain layer

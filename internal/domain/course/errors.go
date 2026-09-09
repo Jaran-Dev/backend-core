@@ -12,5 +12,6 @@ var (
 	ErrMissingModules               = errors.New("course must have at least one module to be published")
 	ErrConcurrentModification       = errors.New("concurrent modification detected: the data was updated by another transaction")
 	ErrPrimaryCategoryNotPublished  = errors.New("course primary category must be published")
+	ErrPrimaryCategoryNotAssigned   = errors.New("course must have a primary category assigned to be published")
 	ErrPrimaryCategoryAlreadyExists = errors.New("course already has a primary category assigned")
 )

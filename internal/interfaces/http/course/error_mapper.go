@@ -5,17 +5,21 @@ import (
 	"net/http"
 
 	domainCourse "github.com/Jaran-Dev/backend-core/internal/domain/course"
+	"github.com/Jaran-Dev/backend-core/internal/infrastructure/repository"
 	rootHttp "github.com/Jaran-Dev/backend-core/internal/interfaces/http"
 
 	"github.com/gin-gonic/gin"
 )
 
 const (
-	CodeCourseNotFound       = "COURSE_NOT_FOUND"
-	CodeTranslationNotFound  = "TRANSLATION_NOT_FOUND"
-	CodeInvalidState         = "INVALID_STATE_TRANSITION"
-	CodeMissingPrerequisites = "MISSING_PREREQUISITES"
-	CodeConflict             = "CONFLICT"
+	CodeCourseNotFound               = "COURSE_NOT_FOUND"
+	CodeTranslationNotFound          = "TRANSLATION_NOT_FOUND"
+	CodeInvalidState                 = "INVALID_STATE_TRANSITION"
+	CodeMissingPrerequisites         = "MISSING_PREREQUISITES"
+	CodePrimaryCategoryNotAssigned   = "PRIMARY_CATEGORY_NOT_ASSIGNED"
+	CodePrimaryCategoryAlreadyExists = "PRIMARY_CATEGORY_ALREADY_EXISTS"
+	CodeForeignKeyViolated           = "FOREIGN_KEY_VIOLATED"
+	CodeConflict                     = "CONFLICT"
 )
 
 type CourseErrorMapper struct{}
@@ -47,10 +51,38 @@ func (m *CourseErrorMapper) MapError(c *gin.Context, err error) bool {
 		})
 		return true
 
-	case errors.Is(err, domainCourse.ErrMissingEnglishTranslation):
+	case errors.Is(err, domainCourse.ErrMissingEnglishTranslation), errors.Is(err, domainCourse.ErrMissingModules):
 		c.JSON(http.StatusBadRequest, rootHttp.APIErrorResponse{
 			Code:    CodeMissingPrerequisites,
-			Message: "Course must have an English translation to be published.",
+			Message: err.Error(),
+		})
+		return true
+
+	case errors.Is(err, domainCourse.ErrPrimaryCategoryNotAssigned):
+		c.JSON(http.StatusBadRequest, rootHttp.APIErrorResponse{
+			Code:    CodePrimaryCategoryNotAssigned,
+			Message: "Course must have a primary category assigned to be published.",
+		})
+		return true
+
+	case errors.Is(err, domainCourse.ErrPrimaryCategoryNotPublished):
+		c.JSON(http.StatusBadRequest, rootHttp.APIErrorResponse{
+			Code:    CodeMissingPrerequisites,
+			Message: "Course primary category must be published.",
+		})
+		return true
+
+	case errors.Is(err, domainCourse.ErrPrimaryCategoryAlreadyExists):
+		c.JSON(http.StatusConflict, rootHttp.APIErrorResponse{
+			Code:    CodePrimaryCategoryAlreadyExists,
+			Message: "Course already has a primary category assigned.",
+		})
+		return true
+
+	case errors.Is(err, repository.ErrForeignKeyViolated):
+		c.JSON(http.StatusBadRequest, rootHttp.APIErrorResponse{
+			Code:    CodeForeignKeyViolated,
+			Message: "Referenced course or category does not exist.",
 		})
 		return true
 
@@ -60,8 +92,14 @@ func (m *CourseErrorMapper) MapError(c *gin.Context, err error) bool {
 			Message: err.Error(),
 		})
 		return true
+
+	case errors.Is(err, domainCourse.ErrConcurrentModification):
+		c.JSON(http.StatusConflict, rootHttp.APIErrorResponse{
+			Code:    CodeConflict,
+			Message: "The course was modified by another transaction. Please refresh and try again.",
+		})
+		return true
 	}
 
-	// Not a course error
 	return false
 }

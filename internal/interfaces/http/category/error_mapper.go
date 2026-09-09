@@ -13,6 +13,7 @@ import (
 const (
 	CodeCategoryNotFound       = "CATEGORY_NOT_FOUND"
 	CodeCategoryHasCourses     = "CATEGORY_HAS_COURSES"
+	CodeCategoryHasChildren    = "CATEGORY_HAS_CHILDREN"
 	CodeInvalidDepth           = "INVALID_CATEGORY_DEPTH"
 	CodeCircularReference      = "CIRCULAR_REFERENCE"
 	CodeInvalidStateTransition = "INVALID_STATE_TRANSITION"
@@ -39,6 +40,13 @@ func (m *CategoryErrorMapper) MapError(c *gin.Context, err error) bool {
 		c.JSON(http.StatusConflict, rootHttp.APIErrorResponse{
 			Code:    CodeCategoryHasCourses,
 			Message: "Category cannot be deleted while courses are assigned to it.",
+		})
+		return true
+
+	case errors.Is(err, domainCategory.ErrCategoryHasChildren):
+		c.JSON(http.StatusConflict, rootHttp.APIErrorResponse{
+			Code:    CodeCategoryHasChildren,
+			Message: "Category cannot be deleted while it has child categories.",
 		})
 		return true
 
@@ -94,6 +102,5 @@ func (m *CategoryErrorMapper) MapError(c *gin.Context, err error) bool {
 		return true
 	}
 
-	// Not a category error
 	return false
 }

@@ -41,7 +41,6 @@ func (s *AdminCategoryService) Create(ctx context.Context, slugStr, coverURL str
 
 	var pID *domainCategory.CategoryID
 	if parentID != nil {
-		// Verify parent exists
 		pid := domainCategory.CategoryID(*parentID)
 		exists, err := s.categoryRepo.ExistsByID(ctx, pid)
 		if err != nil {
@@ -151,6 +150,14 @@ func (s *AdminCategoryService) SoftDelete(ctx context.Context, id domainCategory
 		return domainCategory.ErrCategoryHasCourses
 	}
 
+	hasChildren, err := s.categoryRepo.HasChildren(ctx, id)
+	if err != nil {
+		return err
+	}
+	if hasChildren {
+		return domainCategory.ErrCategoryHasChildren
+	}
+
 	category, err := s.categoryRepo.GetByID(ctx, id, false)
 	if err != nil {
 		return err
@@ -160,15 +167,14 @@ func (s *AdminCategoryService) SoftDelete(ctx context.Context, id domainCategory
 		return err
 	}
 
-	return s.categoryRepo.SoftDelete(ctx, id)
+	// Use Update to preserve optimistic concurrency control
+	return s.categoryRepo.Update(ctx, category)
 }
 
 func (s *AdminCategoryService) Reparent(ctx context.Context, id domainCategory.CategoryID, newParentID *uuid.UUID) (*domainCategory.Category, error) {
-	// If newParentID is nil, we're detaching (making root)
 	if newParentID != nil {
 		parentID := domainCategory.CategoryID(*newParentID)
 
-		// Verify parent exists
 		parentExists, err := s.categoryRepo.ExistsByID(ctx, parentID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify parent category: %w", err)
@@ -177,20 +183,10 @@ func (s *AdminCategoryService) Reparent(ctx context.Context, id domainCategory.C
 			return nil, domainCategory.ErrCategoryNotFound
 		}
 
-		// Check depth and cycle constraints
-		valid, err := s.categoryRepo.CheckDepthAndCycle(ctx, id, parentID)
-		if err != nil {
-			return nil, err
-		}
-		if !valid {
-			return nil, domainCategory.ErrInvalidDepth
-		}
-
 		var pID *domainCategory.CategoryID = &parentID
 		return s.reparentCategory(ctx, id, pID)
 	}
 
-	// Detaching from parent (becoming root)
 	return s.reparentCategory(ctx, id, nil)
 }
 
@@ -201,6 +197,17 @@ func (s *AdminCategoryService) reparentCategory(ctx context.Context, id domainCa
 		category, err := s.categoryRepo.GetByID(txCtx, id, false)
 		if err != nil {
 			return err
+		}
+
+		// Check depth and cycle constraints inside the transaction to prevent TOCTOU race conditions
+		if newParentID != nil {
+			valid, err := s.categoryRepo.CheckDepthAndCycle(txCtx, id, *newParentID)
+			if err != nil {
+				return err
+			}
+			if !valid {
+				return domainCategory.ErrInvalidDepth
+			}
 		}
 
 		category.Reparent(newParentID)

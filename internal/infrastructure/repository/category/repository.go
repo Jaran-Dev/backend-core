@@ -26,8 +26,6 @@ func (r *pgRepository) Create(ctx context.Context, c *domainCategory.Category) e
 	orm := toPersistence(c)
 	db := repository.GetDB(ctx, r.db)
 
-	// The DB trigger (maintain_category_closure) will automatically insert
-	// the self-reference and ancestor rows into category_closure.
 	if err := db.Create(orm).Error; err != nil {
 		translatedErr := repository.TranslateGormError(err)
 		if errors.Is(translatedErr, gorm.ErrDuplicatedKey) {
@@ -88,8 +86,6 @@ func (r *pgRepository) Update(ctx context.Context, c *domainCategory.Category) e
 	oldVersion := orm.Version
 	orm.Version++
 
-	// The DB trigger will automatically update category_closure rows
-	// when parent_id changes (rep parenting).
 	result := db.Model(&CategoryORM{}).
 		Where("id = ? AND version = ?", orm.ID, oldVersion).
 		Updates(map[string]interface{}{
@@ -98,6 +94,7 @@ func (r *pgRepository) Update(ctx context.Context, c *domainCategory.Category) e
 			"status":     orm.Status,
 			"cover_url":  orm.CoverURL,
 			"position":   orm.Position,
+			"deleted_at": orm.DeletedAt,
 			"updated_at": orm.UpdatedAt,
 			"version":    orm.Version,
 		})
@@ -120,7 +117,6 @@ func (r *pgRepository) Update(ctx context.Context, c *domainCategory.Category) e
 func (r *pgRepository) SoftDelete(ctx context.Context, id domainCategory.CategoryID) error {
 	db := repository.GetDB(ctx, r.db)
 
-	// GORM with gorm.DeletedAt translates Delete into UPDATE SET deleted_at = NOW()
 	result := db.Delete(&CategoryORM{}, "id = ?", uuid.UUID(id))
 	if result.Error != nil {
 		return fmt.Errorf("failed to soft delete category: %w", repository.TranslateGormError(result.Error))
@@ -145,15 +141,23 @@ func (r *pgRepository) ExistsByID(ctx context.Context, id domainCategory.Categor
 	return count > 0, nil
 }
 
+func (r *pgRepository) HasChildren(ctx context.Context, id domainCategory.CategoryID) (bool, error) {
+	db := repository.GetDB(ctx, r.db)
+
+	var count int64
+	err := db.Model(&CategoryORM{}).Where("parent_id = ?", uuid.UUID(id)).Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("failed to check category children: %w", repository.TranslateGormError(err))
+	}
+
+	return count > 0, nil
+}
+
 // CheckDepthAndCycle verifies that reparenting targetNodeID under newParentID
 // will not exceed max depth=2 and will not create a circular reference.
-// The DB trigger enforces this strictly, but this check provides clean
-// domain errors before hitting the DB.
 func (r *pgRepository) CheckDepthAndCycle(ctx context.Context, targetNodeID, newParentID domainCategory.CategoryID) (bool, error) {
 	db := repository.GetDB(ctx, r.db)
 
-	// 1. Cycle check: is newParentID a descendant of targetNodeID?
-	// If so, making targetNodeID a child of newParentID would create a cycle.
 	var cycleExists bool
 	err := db.Raw(`
         SELECT EXISTS(
@@ -168,8 +172,6 @@ func (r *pgRepository) CheckDepthAndCycle(ctx context.Context, targetNodeID, new
 		return false, nil
 	}
 
-	// 2. Depth check: would the new depth exceed 2?
-	// New parent's depth from root + 1 (for target node) + max subtree depth of target
 	type depthCheck struct {
 		ParentDepth  int `gorm:"column:parent_depth"`
 		SubtreeDepth int `gorm:"column:subtree_depth"`
@@ -185,8 +187,6 @@ func (r *pgRepository) CheckDepthAndCycle(ctx context.Context, targetNodeID, new
 		return false, fmt.Errorf("failed to check depth: %w", repository.TranslateGormError(err))
 	}
 
-	// Total depth = parent_depth + 1 (for target) + subtree_depth
-	// Max allowed depth = 2
 	if result.ParentDepth+1+result.SubtreeDepth > 2 {
 		return false, nil
 	}
@@ -253,11 +253,9 @@ func (r *pgRepository) ListPublishedTree(ctx context.Context, preferredLocale sh
 		return nil, fmt.Errorf("failed to query published category tree: %w", repository.TranslateGormError(err))
 	}
 
-	// Build tree structure using parent_id relationships
 	nodes := make(map[uuid.UUID]*domainCategory.CategoryNode)
 	var roots []*domainCategory.CategoryNode
 
-	// First pass: create all nodes
 	for i := range flats {
 		flat := &flats[i]
 		orm := flatToCategoryORM(flat)
@@ -271,7 +269,6 @@ func (r *pgRepository) ListPublishedTree(ctx context.Context, preferredLocale sh
 		}
 	}
 
-	// Second pass: build hierarchy
 	for _, flat := range flats {
 		node := nodes[flat.ID]
 		if flat.ParentID == nil {
@@ -279,10 +276,9 @@ func (r *pgRepository) ListPublishedTree(ctx context.Context, preferredLocale sh
 		} else {
 			if parent, ok := nodes[*flat.ParentID]; ok {
 				parent.Children = append(parent.Children, node)
-			} else {
-				// Parent not in the published tree; treat as root
-				roots = append(roots, node)
 			}
+			// If parent is not in the published tree, we omit the child from the roots
+			// to prevent orphaned categories from unexpectedly appearing at the top level.
 		}
 	}
 

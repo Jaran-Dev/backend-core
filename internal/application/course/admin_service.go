@@ -120,7 +120,7 @@ func (s *AdminCourseService) Publish(ctx context.Context, courseID domainCourse.
 			return fmt.Errorf("failed to fetch primary category: %w", err)
 		}
 		if primaryCatID == uuid.Nil {
-			return domainCourse.ErrPrimaryCategoryNotPublished
+			return domainCourse.ErrPrimaryCategoryNotAssigned
 		}
 
 		primaryCat, err := s.categoryRepo.GetByID(txCtx, domainCategory.CategoryID(primaryCatID), false)
